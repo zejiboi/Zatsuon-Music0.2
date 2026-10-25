@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Trash2, ArrowRight, ShoppingBag, CheckCircle, CreditCard, 
-  Smartphone, ShieldCheck, Download, Truck, Tag, Printer,
-  AlertCircle, Sparkles, Check, Clock, Box
+  Smartphone, ShieldCheck, Download, Truck, Printer,
+  AlertCircle, Sparkles, Clock, Globe, UserCheck
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useSiteStore } from '../store/useSiteStore';
-import { Order, OrderItem, CustomerDetails } from '../types';
+import { Order, CustomerDetails, PaymentMethodId } from '../types';
 import { playHoverSound, playSelectSound, playEquipSound, playCancelSound } from '../lib/gameSound';
 
 export const Cart: React.FC = () => {
   const { cart, removeFromCart, updateQuantity, getCartTotal, clearCart } = useStore();
-  const { createOrder } = useSiteStore();
+  const { submitServerCheckout, paymentGateways, account, updatePreferences } = useSiteStore();
 
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'paypal' | 'mpesa'>('card');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>('card');
   const [shippingMethod, setShippingMethod] = useState<'standard' | 'express'>('standard');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
@@ -36,6 +36,35 @@ export const Cart: React.FC = () => {
     phone: ''
   });
 
+  // Auto-populate customer details and preferred gateway from authenticated operative profile
+  useEffect(() => {
+    if (account) {
+      const defShip = account.preferences?.defaultShipping;
+      setCustomer(prev => ({
+        name: prev.name || defShip?.name || account.name || '',
+        email: prev.email || defShip?.email || account.email || '',
+        address: prev.address || defShip?.address || '',
+        city: prev.city || defShip?.city || '',
+        country: prev.country !== 'United States' ? prev.country : (defShip?.country || 'United States'),
+        postalCode: prev.postalCode || defShip?.postalCode || '',
+        phone: prev.phone || defShip?.phone || ''
+      }));
+      if (account.preferences?.preferredPaymentMethod) {
+        setPaymentMethod(account.preferences.preferredPaymentMethod);
+      }
+    }
+  }, [account]);
+
+  // Sync savedCart in encrypted preferences when logged in
+  useEffect(() => {
+    if (account) {
+      const timer = setTimeout(() => {
+        updatePreferences({}, cart);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [cart, account]);
+
   // Billing address match toggle
   const [sameAsBilling, setSameAsBilling] = useState(true);
   const [billingAddress, setBillingAddress] = useState('');
@@ -55,6 +84,9 @@ export const Cart: React.FC = () => {
   // PayPal state
   const [paypalLinked, setPaypalLinked] = useState(false);
 
+  // Paystack / Universal API Gateway state
+  const [gatewayReference, setGatewayReference] = useState('');
+
   // Pricing calculations
   const rawSubtotal = getCartTotal();
   const discountAmount = discountApplied ? rawSubtotal * 0.15 : 0;
@@ -64,6 +96,8 @@ export const Cart: React.FC = () => {
   const baseShipping = isAllDigital ? 0 : subtotal >= 50 ? 0 : 12;
   const shippingFee = isAllDigital ? 0 : shippingMethod === 'express' ? baseShipping + 8 : baseShipping;
   const total = subtotal + shippingFee;
+
+  const activeGatewayConfig = paymentGateways.find(g => g.id === paymentMethod);
 
   const handleApplyDiscount = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,8 +122,8 @@ export const Cart: React.FC = () => {
     });
     if (!customer.name) {
       setCustomer({
-        name: 'Operator Zeji',
-        email: 'operator@zeji-manga.jp',
+        name: account?.name || 'Operator Zeji',
+        email: account?.email || 'operator@zeji-manga.jp',
         address: '104 Shibuya Crossing, Studio B',
         city: 'Tokyo',
         country: 'Japan',
@@ -133,7 +167,6 @@ export const Cart: React.FC = () => {
       return;
     }
 
-    // Basic email check
     if (!customer.email.includes('@') || !customer.email.includes('.')) {
       setValidationError('Please provide a valid transmission email address.');
       playCancelSound();
@@ -142,7 +175,7 @@ export const Cart: React.FC = () => {
 
     if (paymentMethod === 'card') {
       if (!cardDetails.cardNumber.trim() || !cardDetails.expiry.trim() || !cardDetails.cvc.trim()) {
-        setValidationError('Please enter your card number, expiry, and CVC or click "AUTOFILL TEST CARD".');
+        setValidationError('Please enter your card number, expiry, and CVC or click "DEMO AUTOFILL".');
         playCancelSound();
         return;
       }
@@ -161,45 +194,42 @@ export const Cart: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // Realistic cryptographic settlement simulation
-      await new Promise(res => setTimeout(res, paymentMethod === 'mpesa' ? 2200 : 1400));
+      await new Promise(res => setTimeout(res, paymentMethod === 'mpesa' ? 1200 : 700));
 
       if (paymentMethod === 'mpesa') {
         setMpesaStatus('verified');
       }
 
-      const orderItems: OrderItem[] = cart.map(i => ({
-        productId: i.id,
-        name: i.name,
-        price: i.price,
-        quantity: i.quantity,
-        category: i.category,
-        image: i.image,
-        downloadUrl: i.downloadUrl || 'https://actions.google.com/sounds/v1/science_fiction/scifi_hum_loop.ogg'
-      }));
-
-      const newOrder: Order = {
-        id: `ZEJI-ORD-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 900 + 100)}`,
-        createdAt: new Date().toISOString(),
+      const settledOrder = await submitServerCheckout({
         customer: {
           ...customer,
           phone: customer.phone || mpesaPhone
         },
-        items: orderItems,
-        subtotal,
-        shippingFee,
-        total,
+        items: cart,
         paymentMethod,
-        status: 'processing'
-      };
+        shippingMethod,
+        discountCode: discountApplied ? (discountCode.trim() || 'ZEJI10') : undefined
+      });
 
-      await createOrder(newOrder);
+      if (account) {
+        await updatePreferences(
+          {
+            defaultShipping: {
+              ...customer,
+              phone: customer.phone || mpesaPhone
+            },
+            preferredPaymentMethod: paymentMethod
+          },
+          []
+        );
+      }
+
       playEquipSound();
-      setCompletedOrder(newOrder);
+      setCompletedOrder(settledOrder);
       clearCart();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Order error:', err);
-      setValidationError('Encountered an issue processing order settlement. Please retry.');
+      setValidationError(err?.message || 'Encountered an issue processing order settlement. Please retry.');
     } finally {
       setIsSubmitting(false);
     }
@@ -210,7 +240,7 @@ export const Cart: React.FC = () => {
     const hasDigital = completedOrder.items.some(i => i.category === 'Digital');
 
     return (
-      <div className="max-w-[850px] mx-auto px-4 sm:px-8 py-12 md:py-16 relative z-10 font-sans">
+      <div className="max-w-[850px] mx-auto px-4 sm:px-8 py-12 md:py-16 relative z-10 font-sans pb-28">
         <div 
           className="bg-black border-2 border-white p-6 sm:p-10 shadow-[8px_8px_0_#00FF66] text-white relative overflow-hidden"
           style={{
@@ -241,6 +271,14 @@ export const Cart: React.FC = () => {
               <span className="text-[#00FF66] font-bold text-sm">{completedOrder.id}</span>
             </div>
           </div>
+
+          {/* Gateway Reference Stamp */}
+          {completedOrder.gatewayReference && (
+            <div className="mb-4 px-4 py-2.5 bg-zinc-950 border border-[#00FF66] flex flex-wrap items-center justify-between gap-2 font-mono text-xs relative z-10">
+              <span className="text-zinc-400">GATEWAY SETTLEMENT REF:</span>
+              <span className="text-[#00FF66] font-bold">{completedOrder.gatewayReference}</span>
+            </div>
+          )}
 
           {/* Interactive Fulfillment Timeline */}
           <div className="mb-6 p-4 bg-zinc-950 border border-zinc-800 relative z-10">
@@ -313,7 +351,7 @@ export const Cart: React.FC = () => {
                   <Download className="w-4 h-4" /> DIGITAL ASSETS AVAILABLE FOR IMMEDIATE DOWNLOAD
                 </span>
                 <span className="text-[11px] font-mono text-zinc-400 block mt-0.5">
-                  Lossless 24-bit audio stems & patches have been unlocked for your order.
+                  Lossless 24-bit audio stems, tracks & passes have been unlocked in your operative vault.
                 </span>
               </div>
               <a
@@ -329,13 +367,22 @@ export const Cart: React.FC = () => {
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t-2 border-zinc-800 relative z-10">
-            <button
-              onClick={() => window.print()}
-              className="px-5 py-2.5 bg-black border border-zinc-700 hover:border-white text-zinc-400 hover:text-white font-mono text-xs uppercase tracking-wider transition-all flex items-center gap-2"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>PRINT RECEIPT MANIFEST</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => window.print()}
+                className="px-5 py-2.5 bg-black border border-zinc-700 hover:border-white text-zinc-400 hover:text-white font-mono text-xs uppercase tracking-wider transition-all flex items-center gap-2"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>PRINT RECEIPT</span>
+              </button>
+              <Link
+                to="/account"
+                onClick={playSelectSound}
+                className="px-4 py-2.5 bg-zinc-950 border border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-black font-mono text-xs font-bold uppercase tracking-wider transition-all"
+              >
+                VIEW IN ACCOUNT VAULT
+              </Link>
+            </div>
 
             <Link
               to="/store"
@@ -355,7 +402,7 @@ export const Cart: React.FC = () => {
   // 2. Empty Cart Screen
   if (cart.length === 0) {
     return (
-      <div className="max-w-[650px] mx-auto px-4 sm:px-8 py-20 text-center relative z-10 font-sans">
+      <div className="max-w-[650px] mx-auto px-4 sm:px-8 py-20 text-center relative z-10 font-sans pb-28">
         <div 
           className="bg-black border-2 border-white p-10 sm:p-14 shadow-[6px_6px_0_#00FF66] relative overflow-hidden"
           style={{
@@ -367,17 +414,27 @@ export const Cart: React.FC = () => {
             ARMORY REQUISITION DECK IS EMPTY
           </h2>
           <p className="text-xs font-mono text-zinc-400 mb-6 max-w-sm mx-auto">
-            No gear, vinyl releases, or tactical audio stems selected. Select items from the official armory to equip.
+            No gear, vinyl releases, tour passes, or tactical audio stems selected. Select items from the official armory or sound archive to equip.
           </p>
-          <Link
-            to="/store"
-            onMouseEnter={playHoverSound}
-            onClick={playSelectSound}
-            className="inline-flex items-center gap-2 px-8 py-3.5 bg-[#00FF66] hover:bg-white text-black font-game font-black text-xs uppercase tracking-wider transition-all border-2 border-black shadow-[3px_3px_0_#ffffff] hover:shadow-[3px_3px_0_#00FF66]"
-          >
-            <span>BROWSE OFFICIAL GEAR // 装備選択</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link
+              to="/store"
+              onMouseEnter={playHoverSound}
+              onClick={playSelectSound}
+              className="inline-flex items-center gap-2 px-8 py-3.5 bg-[#00FF66] hover:bg-white text-black font-game font-black text-xs uppercase tracking-wider transition-all border-2 border-black shadow-[3px_3px_0_#ffffff] hover:shadow-[3px_3px_0_#00FF66]"
+            >
+              <span>BROWSE OFFICIAL GEAR // 装備選択</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link
+              to="/music"
+              onMouseEnter={playHoverSound}
+              onClick={playSelectSound}
+              className="inline-flex items-center gap-2 px-6 py-3.5 bg-black hover:bg-white text-white hover:text-black font-game font-black text-xs uppercase tracking-wider transition-all border-2 border-white shadow-[3px_3px_0_#00FF66]"
+            >
+              <span>SOUND ARCHIVES // 音源購入</span>
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -385,7 +442,7 @@ export const Cart: React.FC = () => {
 
   // 3. Active Checkout Form Screen
   return (
-    <div className="max-w-[1340px] mx-auto px-4 sm:px-8 py-8 md:py-14 relative z-10 font-sans w-full pb-24">
+    <div className="max-w-[1340px] mx-auto px-4 sm:px-8 py-8 md:py-14 relative z-10 font-sans w-full pb-28">
       
       {/* Manga Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8 pb-4 border-b-2 border-white">
@@ -395,7 +452,7 @@ export const Cart: React.FC = () => {
               第漆話 // 07
             </span>
             <span className="text-xs font-mono text-zinc-400">
-              ARMORY CHECKOUT & LOGISTICS
+              ARMORY CHECKOUT & PLUGGABLE PAYMENT GATEWAY
             </span>
           </div>
           <h1 className="text-3xl sm:text-5xl font-game font-black tracking-tight text-white uppercase flex items-center gap-3">
@@ -404,15 +461,30 @@ export const Cart: React.FC = () => {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
-          <ShieldCheck className="w-4 h-4 text-[#00FF66]" />
-          <span>256-BIT ENCRYPTED SETTLEMENT</span>
+        <div className="flex items-center gap-3 text-xs font-mono text-zinc-400">
+          {account ? (
+            <span className="px-2.5 py-1 bg-zinc-950 border border-[#00FF66] text-[#00FF66] flex items-center gap-1.5 font-bold">
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>OPERATIVE: {account.name}</span>
+            </span>
+          ) : (
+            <Link
+              to="/account"
+              className="px-2.5 py-1 bg-zinc-950 border border-zinc-700 hover:border-[#00FF66] text-zinc-300 hover:text-[#00FF66] transition-colors"
+            >
+              SIGN IN TO SYNC ORDER HISTORY &rarr;
+            </Link>
+          )}
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 text-[#00FF66]" />
+            <span>256-BIT ENCRYPTED</span>
+          </div>
         </div>
       </div>
 
       {/* Validation Error Banner */}
       {validationError && (
-        <div className="mb-6 p-4 bg-red-950/80 border-2 border-red-500 text-white font-mono text-xs flex items-center gap-3 shadow-[4px_4px_0_#000000] animate-shake">
+        <div className="mb-6 p-4 bg-red-950/80 border-2 border-red-500 text-white font-mono text-xs flex items-center gap-3 shadow-[4px_4px_0_#000000]">
           <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
           <div className="flex-1">
             <span className="text-red-400 font-bold block">【 警告 】 VALIDATION DISPATCH ERROR:</span>
@@ -791,17 +863,25 @@ export const Cart: React.FC = () => {
               </span>
             </div>
 
-            {/* Payment Options Selection */}
+            {/* Payment Options Selection (Pluggable API Gateways) */}
             <div className="pt-2">
-              <label className="block text-[10px] font-mono text-zinc-400 uppercase tracking-wider mb-2">
-                04 // SELECT PAYMENT GATEWAY
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[10px] font-mono text-zinc-400 uppercase tracking-wider">
+                  04 // SELECT PAYMENT API GATEWAY
+                </label>
+                {activeGatewayConfig && (
+                  <span className="text-[9px] font-mono text-[#00FF66]">
+                    [{activeGatewayConfig.mode.toUpperCase()} MODE]
+                  </span>
+                )}
+              </div>
 
-              <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
                 {[
-                  { id: 'card', label: 'CARD', icon: CreditCard },
+                  { id: 'card', label: 'STRIPE / CARD', icon: CreditCard },
                   { id: 'paypal', label: 'PAYPAL', icon: ShieldCheck },
-                  { id: 'mpesa', label: 'M-PESA', icon: Smartphone }
+                  { id: 'mpesa', label: 'M-PESA', icon: Smartphone },
+                  { id: 'paystack', label: 'API GATEWAY', icon: Globe }
                 ].map(p => {
                   const Icon = p.icon;
                   const isSelected = paymentMethod === p.id;
@@ -811,16 +891,16 @@ export const Cart: React.FC = () => {
                       type="button"
                       onClick={() => {
                         playSelectSound();
-                        setPaymentMethod(p.id as any);
+                        setPaymentMethod(p.id as PaymentMethodId);
                       }}
-                      className={`p-3 border-2 flex flex-col items-center justify-center gap-1 text-xs font-mono font-bold transition-all ${
+                      className={`p-2.5 border-2 flex flex-col items-center justify-center gap-1 text-xs font-mono font-bold transition-all ${
                         isSelected
                           ? 'bg-white text-black border-white shadow-[2px_2px_0_#00FF66]'
                           : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-500 hover:text-white'
                       }`}
                     >
                       <Icon className="w-4 h-4" />
-                      <span className="text-[10px]">{p.label}</span>
+                      <span className="text-[9px] text-center leading-tight">{p.label}</span>
                     </button>
                   );
                 })}
@@ -830,11 +910,11 @@ export const Cart: React.FC = () => {
               {paymentMethod === 'card' && (
                 <div className="space-y-3 p-3.5 bg-zinc-950 border border-zinc-800 font-mono text-xs mb-4">
                   <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                    <span>CREDIT / DEBIT CARD</span>
+                    <span>{activeGatewayConfig?.name || 'STRIPE / CARD GATEWAY'}</span>
                     <button
                       type="button"
                       onClick={handleFillDemoCard}
-                      className="text-[#00FF66] hover:underline"
+                      className="text-[#00FF66] hover:underline font-bold"
                     >
                       Use Demo Card
                     </button>
@@ -880,11 +960,11 @@ export const Cart: React.FC = () => {
               {paymentMethod === 'paypal' && (
                 <div className="p-3.5 bg-zinc-950 border border-zinc-800 font-mono text-xs text-zinc-400 mb-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-white font-bold">PayPal Express Gateway</span>
+                    <span className="text-white font-bold">{activeGatewayConfig?.name || 'PayPal Express Gateway'}</span>
                     <span className="text-[10px] text-[#00FF66]">Instant Auth</span>
                   </div>
                   <p className="text-[11px] text-zinc-400">
-                    Authorize through your PayPal wallet or connected balance.
+                    Authorize through your PayPal wallet or connected balance ({activeGatewayConfig?.publicKeyOrMerchantId || 'Configured'}).
                   </p>
                   <button
                     type="button"
@@ -905,9 +985,9 @@ export const Cart: React.FC = () => {
 
               {paymentMethod === 'mpesa' && (
                 <div className="p-3.5 bg-zinc-950 border border-zinc-800 font-mono text-xs mb-4 space-y-2">
-                  <span className="text-[#00FF66] block font-bold">M-Pesa STK Instant Push:</span>
+                  <span className="text-[#00FF66] block font-bold">{activeGatewayConfig?.name || 'M-Pesa STK Instant Push'}:</span>
                   <p className="text-zinc-400 text-[11px]">
-                    Enter your Safaricom mobile phone number below. An encrypted prompt will appear on your screen to enter your M-Pesa PIN.
+                    Enter your Safaricom mobile phone number below. An encrypted STK prompt will dispatch to your handset.
                   </p>
                   <div>
                     <label className="block text-[10px] text-zinc-400 mb-1">M-PESA MOBILE NUMBER</label>
@@ -925,6 +1005,28 @@ export const Cart: React.FC = () => {
                       <span>DISPATCHING STK PUSH TO HANDSET... ENTER PIN NOW.</span>
                     </div>
                   )}
+                </div>
+              )}
+
+              {paymentMethod === 'paystack' && (
+                <div className="p-3.5 bg-zinc-950 border border-zinc-800 font-mono text-xs mb-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#00FF66] font-bold">{activeGatewayConfig?.name || 'Paystack / Universal API Gateway'}</span>
+                    <span className="text-[10px] text-zinc-400">{activeGatewayConfig?.currency || 'USD'}</span>
+                  </div>
+                  <p className="text-zinc-400 text-[11px]">
+                    Universal pluggable payment API endpoint ({activeGatewayConfig?.webhookOrEndpointUrl || '/api/webhooks/paystack'}). Can be pointed to any custom payment processor in Admin &rarr; Gateways.
+                  </p>
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">OPTIONAL WALLET / PAYER REFERENCE</label>
+                    <input
+                      type="text"
+                      placeholder="Auto-generated if left blank"
+                      value={gatewayReference}
+                      onChange={e => setGatewayReference(e.target.value)}
+                      className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2 text-white outline-none"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -953,9 +1055,9 @@ export const Cart: React.FC = () => {
               </button>
 
               <div className="flex items-center justify-center gap-4 text-[10px] font-mono text-zinc-500 mt-3">
-                <span>30-DAY OPERATIVE GUARANTEE</span>
+                <span>SERVER-VERIFIED PRICING</span>
                 <span>&bull;</span>
-                <span>TRACKED PHYSICAL LOGISTICS</span>
+                <span>PLUGGABLE GATEWAY API</span>
               </div>
             </div>
           </div>

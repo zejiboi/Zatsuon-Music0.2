@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+.vault_master.key
+server_db.enc.json

@@ -1,16 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Activity, ChevronUp, ChevronDown } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Activity, ChevronUp, ChevronDown, ShoppingBag } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useSiteStore } from '../store/useSiteStore';
-import { playHoverSound, playSelectSound } from '../lib/gameSound';
+import { playHoverSound, playSelectSound, playEquipSound } from '../lib/gameSound';
 import { darkOrchestra } from '../lib/darkOrchestraEngine';
 import { audioVisualizer } from '../lib/audioVisualizer';
 import { FrequencyVisualizer } from './FrequencyVisualizer';
 import { WaveformScrubber } from './WaveformScrubber';
 
 export const MediaPlayer: React.FC = () => {
-  const { currentTrack, isPlaying, togglePlayPause, playTrack } = useStore();
-  const { tracks } = useSiteStore();
+  const { currentTrack, isPlaying, togglePlayPause, playTrack, addToCart, setIsCartOpen } = useStore();
+  const { tracks, account } = useSiteStore();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
@@ -18,6 +18,12 @@ export const MediaPlayer: React.FC = () => {
   const [volume, setVolume] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
   const [showVisualizer, setShowVisualizer] = useState(false);
+
+  useEffect(() => {
+    if (account?.preferences?.volume !== undefined) {
+      setVolume(account.preferences.volume);
+    }
+  }, [account?.preferences?.volume]);
 
   const activeTrack = currentTrack || (tracks.length > 0 ? tracks[0] : null);
 
@@ -88,6 +94,21 @@ export const MediaPlayer: React.FC = () => {
     }
   };
 
+  const handleBuyActiveTrack = () => {
+    playEquipSound();
+    addToCart({
+      id: activeTrack.id,
+      name: `${activeTrack.title} (24-Bit Lossless Master)`,
+      price: activeTrack.price ?? 2.99,
+      image: activeTrack.coverUrl || '/src/assets/images/game_album_midnight_echoes_1792574038993.jpg',
+      category: 'Digital',
+      description: `24-bit studio lossless master & stem package from ${activeTrack.album}.`,
+      inStock: true,
+      downloadUrl: activeTrack.audioUrl
+    });
+    setIsCartOpen(true);
+  };
+
   const handleSeek = (newTime: number) => {
     if (audioRef.current) {
       audioRef.current.currentTime = newTime;
@@ -113,11 +134,11 @@ export const MediaPlayer: React.FC = () => {
   const effectiveDuration = duration > 0 ? duration : fallbackDurationSeconds;
 
   return (
-    <aside 
-      aria-label="Audio Playback Bar"
-      className="fixed bottom-0 left-0 right-0 z-[100] w-full isolate font-sans select-none pointer-events-auto transform-none"
+    <aside
+      aria-label="Floating Audio Playback Bar"
+      style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 9990 }}
+      className="fixed bottom-0 left-0 right-0 z-[9990] w-full isolate font-sans select-none pointer-events-auto"
     >
-      
       {/* Collapsible Real-Time Manga Frequency Visualizer Deck */}
       {showVisualizer && (
         <div className="max-w-[1440px] mx-auto px-2 sm:px-4">
@@ -138,33 +159,30 @@ export const MediaPlayer: React.FC = () => {
                 CLOSE [ &times; ]
               </button>
             </div>
-            
-            <FrequencyVisualizer 
-              isPlaying={isPlaying} 
-              currentTime={currentTime} 
-              mode="full" 
+
+            <FrequencyVisualizer
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              mode="full"
             />
           </div>
         </div>
       )}
 
-      {/* Main Bottom Control Deck - Locked to Bottom */}
-      <div className="bg-black text-white border-t-2 border-white px-2.5 sm:px-6 py-1.5 sm:py-2 shadow-[0_-4px_0_#00FF66] relative overflow-hidden">
-        {/* Background Screentone */}
+      {/* Main Bottom Control Deck - Locked to Viewport Bottom Across All Pages */}
+      <div className="bg-black/95 backdrop-blur-md text-white border-t-2 border-white px-2.5 sm:px-6 py-1.5 sm:py-2 shadow-[0_-4px_0_#00FF66] relative overflow-hidden">
         <div className="absolute inset-0 manga-screentone-neon opacity-5 pointer-events-none"></div>
 
         <div className="max-w-[1440px] mx-auto relative z-10">
-          
-          {/* MOBILE / TABLET VIEW (< md) - Compact, Space-Optimized */}
+          {/* MOBILE / TABLET VIEW (< md) */}
           <div className="flex md:hidden flex-col gap-0.5 w-full">
             <div className="flex items-center justify-between gap-1.5">
-              {/* Thumbnail + Title */}
               <div className="flex items-center gap-1.5 min-w-0 flex-1">
                 <div className="w-7 h-7 border border-white bg-black shrink-0 overflow-hidden shadow-[1px_1px_0_#00FF66]">
-                  <img 
-                    src={activeTrack.coverUrl || '/src/assets/images/game_album_midnight_echoes_1792574038993.jpg'} 
-                    alt={activeTrack.title} 
-                    className="w-full h-full object-cover grayscale contrast-125" 
+                  <img
+                    src={activeTrack.coverUrl || '/src/assets/images/game_album_midnight_echoes_1792574038993.jpg'}
+                    alt={activeTrack.title}
+                    className="w-full h-full object-cover grayscale contrast-125"
                   />
                 </div>
                 <div className="min-w-0">
@@ -172,14 +190,22 @@ export const MediaPlayer: React.FC = () => {
                     {activeTrack.title}
                   </h4>
                   <span className="text-[8px] font-mono text-[#00FF66] truncate block leading-tight">
-                    {isPlaying ? '▶ REPLAY' : '❚❚ IDLE'} &bull; {activeTrack.album || 'MIDNIGHT ECHOES'}
+                    {isPlaying ? '▶ PLAYING' : '❚❚ LOCKED'} &bull; ${(activeTrack.price ?? 2.99).toFixed(2)}
                   </span>
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex items-center gap-1 shrink-0">
-                <button 
+                <button
+                  onClick={handleBuyActiveTrack}
+                  className="px-1.5 py-0.5 bg-black border border-[#00FF66] text-[#00FF66] text-[8px] font-mono font-bold flex items-center gap-0.5"
+                  title="Add current track to cart"
+                >
+                  <ShoppingBag className="w-2.5 h-2.5" />
+                  <span>BUY</span>
+                </button>
+
+                <button
                   onClick={handlePrev}
                   onMouseEnter={playHoverSound}
                   className="text-white hover:text-[#00FF66] p-0.5"
@@ -188,7 +214,7 @@ export const MediaPlayer: React.FC = () => {
                   <SkipBack className="w-3 h-3" />
                 </button>
 
-                <button 
+                <button
                   onClick={handleToggle}
                   onMouseEnter={playHoverSound}
                   className="w-7 h-7 flex items-center justify-center bg-[#00FF66] text-black border border-black hover:bg-white shadow-[1px_1px_0_#ffffff]"
@@ -197,7 +223,7 @@ export const MediaPlayer: React.FC = () => {
                   {isPlaying ? <Pause className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current ml-0.5" />}
                 </button>
 
-                <button 
+                <button
                   onClick={handleNext}
                   onMouseEnter={playHoverSound}
                   className="text-white hover:text-[#00FF66] p-0.5"
@@ -218,7 +244,6 @@ export const MediaPlayer: React.FC = () => {
               </div>
             </div>
 
-            {/* Mobile Scrubber */}
             <WaveformScrubber
               currentTime={currentTime}
               duration={effectiveDuration}
@@ -231,16 +256,15 @@ export const MediaPlayer: React.FC = () => {
             />
           </div>
 
-          {/* DESKTOP VIEW (>= md) - Full Manga Audio Deck */}
+          {/* DESKTOP VIEW (>= md) */}
           <div className="hidden md:flex items-center justify-between gap-4">
-            
             {/* Left: Track Cover & Details */}
-            <div className="flex items-center gap-3 w-auto min-w-[240px] max-w-[280px]">
+            <div className="flex items-center gap-3 w-auto min-w-[260px] max-w-[310px]">
               <div className="w-10 h-10 border-2 border-white bg-black shrink-0 overflow-hidden shadow-[2px_2px_0_#00FF66] relative group">
-                <img 
-                  src={activeTrack.coverUrl || '/src/assets/images/game_album_midnight_echoes_1792574038993.jpg'} 
-                  alt={activeTrack.title} 
-                  className="w-full h-full object-cover grayscale contrast-125 group-hover:scale-105 transition-transform" 
+                <img
+                  src={activeTrack.coverUrl || '/src/assets/images/game_album_midnight_echoes_1792574038993.jpg'}
+                  alt={activeTrack.title}
+                  className="w-full h-full object-cover grayscale contrast-125 group-hover:scale-105 transition-transform"
                 />
                 {isPlaying && (
                   <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#00FF66] animate-ping" />
@@ -258,12 +282,22 @@ export const MediaPlayer: React.FC = () => {
                   {activeTrack.title}
                 </h4>
               </div>
+
+              <button
+                onClick={handleBuyActiveTrack}
+                onMouseEnter={playHoverSound}
+                className="px-2 py-1 bg-black hover:bg-[#00FF66] text-[#00FF66] hover:text-black border border-[#00FF66] text-[9px] font-mono font-bold transition-colors shrink-0 flex items-center gap-1"
+                title="Add track to Armory Cart"
+              >
+                <ShoppingBag className="w-3 h-3" />
+                <span>${(activeTrack.price ?? 2.99).toFixed(2)}</span>
+              </button>
             </div>
 
             {/* Center: Playback Controls & Waveform Scrubber */}
             <div className="flex flex-col items-center flex-1 max-w-2xl px-2">
               <div className="flex items-center gap-5 mb-1">
-                <button 
+                <button
                   onClick={handlePrev}
                   onMouseEnter={playHoverSound}
                   className="text-white hover:text-[#00FF66] transition-colors p-1"
@@ -272,7 +306,7 @@ export const MediaPlayer: React.FC = () => {
                   <SkipBack className="w-4 h-4" />
                 </button>
 
-                <button 
+                <button
                   onClick={handleToggle}
                   onMouseEnter={playHoverSound}
                   className="w-9 h-9 flex items-center justify-center bg-[#00FF66] text-black border-2 border-black hover:bg-white hover:scale-105 transition-all shadow-[2px_2px_0_#ffffff] active:translate-x-0.5 active:translate-y-0.5"
@@ -281,7 +315,7 @@ export const MediaPlayer: React.FC = () => {
                   {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
                 </button>
 
-                <button 
+                <button
                   onClick={handleNext}
                   onMouseEnter={playHoverSound}
                   className="text-white hover:text-[#00FF66] transition-colors p-1"
@@ -352,14 +386,13 @@ export const MediaPlayer: React.FC = () => {
                 />
               </div>
             </div>
-
           </div>
         </div>
 
         {/* Hidden Audio Element */}
-        <audio 
-          ref={audioRef} 
-          src={activeTrack.audioUrl} 
+        <audio
+          ref={audioRef}
+          src={activeTrack.audioUrl}
           onEnded={handleNext}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}

@@ -1,13 +1,17 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Trash2, ArrowRight, ShoppingBag } from 'lucide-react';
+import { X, Trash2, ArrowRight, ShoppingBag, ShieldCheck, Disc } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { useSiteStore } from '../store/useSiteStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { playHoverSound, playSelectSound, playCancelSound } from '../lib/gameSound';
 
 export const CartSidebar: React.FC = () => {
-  const { cart, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart, getCartTotal } = useStore();
+  const { cart, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart, getCartTotal, clearCart } = useStore();
+  const { account, paymentGateways } = useSiteStore();
   const navigate = useNavigate();
+
+  const enabledGateways = paymentGateways.filter(g => g.enabled);
 
   const handleCheckout = () => {
     playSelectSound();
@@ -28,7 +32,7 @@ export const CartSidebar: React.FC = () => {
               playCancelSound();
               setIsCartOpen(false);
             }}
-            className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[9995]"
           />
 
           {/* Sidebar Drawer Styled as Japanese Manga Requisition Panel */}
@@ -37,13 +41,13 @@ export const CartSidebar: React.FC = () => {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-            className="fixed inset-y-0 right-0 w-full max-w-md bg-black border-l-2 border-white z-50 flex flex-col shadow-[0_0_50px_rgba(0,0,0,1)] font-sans relative overflow-hidden"
+            className="fixed inset-y-0 right-0 w-full max-w-md bg-black border-l-2 border-white z-[9996] flex flex-col shadow-[0_0_50px_rgba(0,0,0,1)] font-sans relative overflow-hidden"
           >
             {/* Background Screentone */}
             <div className="absolute inset-0 manga-screentone-white opacity-5 pointer-events-none"></div>
 
             {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b-2 border-white bg-black relative z-10">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b-2 border-white bg-black relative z-10">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 border border-[#00FF66] bg-black text-[#00FF66]">
                   <ShoppingBag className="w-4 h-4" />
@@ -57,28 +61,46 @@ export const CartSidebar: React.FC = () => {
                       ARMORY CART
                     </h2>
                   </div>
-                  <span className="text-[10px] font-mono text-zinc-400">
-                    REQUISITION COUNT: {cart.reduce((t, i) => t + i.quantity, 0)} 点
-                  </span>
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-400">
+                    <span>REQUISITION COUNT: {cart.reduce((t, i) => t + i.quantity, 0)} 点</span>
+                    {account && (
+                      <span className="text-[#00FF66] font-bold truncate max-w-[140px]">
+                        &bull; {account.name}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  playCancelSound();
-                  setIsCartOpen(false);
-                }}
-                className="p-1.5 text-white hover:text-[#00FF66] border border-zinc-750 hover:border-white transition-colors"
-                aria-label="Close cart"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                {cart.length > 0 && (
+                  <button
+                    onClick={() => {
+                      playCancelSound();
+                      clearCart();
+                    }}
+                    className="px-2 py-1 text-[9px] font-mono font-bold text-zinc-400 hover:text-red-400 border border-zinc-800 hover:border-red-400 transition-colors uppercase"
+                  >
+                    CLEAR
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    playCancelSound();
+                    setIsCartOpen(false);
+                  }}
+                  className="p-1.5 text-white hover:text-[#00FF66] border border-zinc-750 hover:border-white transition-colors"
+                  aria-label="Close cart"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Cart Items List */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 relative z-10">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 relative z-10 pb-24">
               {cart.length === 0 ? (
-                <div className="text-center text-zinc-500 py-16 flex flex-col items-center gap-3">
+                <div className="text-center text-zinc-500 py-14 flex flex-col items-center gap-3">
                   <div className="p-4 border-2 border-zinc-800 bg-zinc-950">
                     <ShoppingBag className="w-10 h-10 text-zinc-600" />
                   </div>
@@ -88,16 +110,29 @@ export const CartSidebar: React.FC = () => {
                   <span className="text-[11px] [font-family:var(--font-manga)] text-zinc-600">
                     装備スロットは空です
                   </span>
-                  <button 
-                    onClick={() => {
-                      playSelectSound();
-                      setIsCartOpen(false);
-                      navigate('/store');
-                    }}
-                    className="mt-2 px-4 py-2 border-2 border-[#00FF66] bg-black text-[#00FF66] hover:bg-[#00FF66] hover:text-black font-game font-bold text-xs uppercase shadow-[2px_2px_0_#ffffff] transition-all"
-                  >
-                    BROWSE ARMORY STORE &rarr;
-                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                    <button 
+                      onClick={() => {
+                        playSelectSound();
+                        setIsCartOpen(false);
+                        navigate('/store');
+                      }}
+                      className="px-4 py-2 border-2 border-[#00FF66] bg-black text-[#00FF66] hover:bg-[#00FF66] hover:text-black font-game font-bold text-xs uppercase shadow-[2px_2px_0_#ffffff] transition-all"
+                    >
+                      BROWSE STORE &rarr;
+                    </button>
+                    <button 
+                      onClick={() => {
+                        playSelectSound();
+                        setIsCartOpen(false);
+                        navigate('/music');
+                      }}
+                      className="px-4 py-2 border-2 border-white bg-black text-white hover:bg-white hover:text-black font-game font-bold text-xs uppercase shadow-[2px_2px_0_#00FF66] transition-all flex items-center gap-1"
+                    >
+                      <Disc className="w-3.5 h-3.5 text-[#00FF66]" />
+                      <span>BUY TRACKS</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
                 cart.map((item, idx) => (
@@ -120,11 +155,19 @@ export const CartSidebar: React.FC = () => {
                     </div>
 
                     <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span className="text-[9px] font-mono px-1 bg-zinc-900 text-zinc-300 border border-zinc-700 uppercase">
+                          {item.category}
+                        </span>
+                        <span className="text-xs text-[#00FF66] font-mono font-bold">
+                          ${(item.price * item.quantity).toFixed(2)}
+                        </span>
+                      </div>
                       <h4 className="text-sm font-game font-black text-white uppercase truncate">
                         {item.name}
                       </h4>
-                      <p className="text-xs text-[#00FF66] font-mono font-bold mb-2">
-                        ${item.price.toFixed(2)}
+                      <p className="text-[10px] text-zinc-400 font-mono mb-2">
+                        ${item.price.toFixed(2)} each
                       </p>
 
                       <div className="flex items-center justify-between">
@@ -162,7 +205,17 @@ export const CartSidebar: React.FC = () => {
 
             {/* Footer / Checkout in Manga Styling */}
             {cart.length > 0 && (
-              <div className="p-5 border-t-2 border-white bg-black space-y-4 relative z-10 shadow-[0_-4px_0_#00FF66]">
+              <div className="p-4 sm:p-5 border-t-2 border-white bg-black space-y-3 relative z-10 shadow-[0_-4px_0_#00FF66]">
+                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                  <span className="flex items-center gap-1 text-[#00FF66]">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    GATEWAYS READY:
+                  </span>
+                  <span className="uppercase text-zinc-300 truncate max-w-[200px]">
+                    {enabledGateways.map(g => g.id.toUpperCase()).join(' • ') || 'CARD • PAYPAL • M-PESA'}
+                  </span>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-mono text-zinc-400 uppercase">
                     TOTAL ESTIMATE // 合計

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { ShoppingBag, Menu, X } from 'lucide-react';
+import { ShoppingBag, Menu, X, User, ShieldAlert } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useSiteStore } from '../store/useSiteStore';
 import { playHoverSound, playSelectSound } from '../lib/gameSound';
@@ -15,10 +15,11 @@ interface NavItemConfig {
 
 export const GameNavbar: React.FC = () => {
   const { cart, setIsCartOpen } = useStore();
-  const { user } = useSiteStore();
+  const { user, account } = useSiteStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
-  const isAdmin = user?.email === 'josephgitongaofficial@gmail.com';
+  const isAdmin =
+    account?.role === 'admin' || user?.email === 'josephgitongaofficial@gmail.com';
 
   const navLinks: NavItemConfig[] = [
     { name: 'HOME', jp: '本', chapter: '零', path: '/', sfxKatakana: 'ドンッ' },
@@ -27,7 +28,8 @@ export const GameNavbar: React.FC = () => {
     { name: 'TOUR', jp: '巡', chapter: '参', path: '/tour', sfxKatakana: 'ゴオオ' },
     { name: 'INTEL', jp: '報', chapter: '四', path: '/blog', sfxKatakana: 'シャッ' },
     { name: 'COMMS', jp: '信', chapter: '伍', path: '/contact', sfxKatakana: 'ピポッ' },
-    ...(isAdmin ? [{ name: 'ADMIN', jp: '制', chapter: '特', path: '/admin', sfxKatakana: 'キーッ' }] : []),
+    { name: 'ACCOUNT', jp: '員', chapter: '六', path: '/account', sfxKatakana: 'キィン' },
+    { name: 'ADMIN', jp: '制', chapter: '特', path: '/admin', sfxKatakana: 'キーッ' },
   ];
 
   const totalCartCount = cart.reduce((total, item) => total + item.quantity, 0);
@@ -38,28 +40,25 @@ export const GameNavbar: React.FC = () => {
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-white opacity-80"></div>
 
       <div className="max-w-[1440px] mx-auto px-2.5 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-2">
-        
         {/* Brand / Logo: Japanese Manga Ink Stamp Aesthetic */}
-        <Link 
-          to="/" 
+        <Link
+          to="/"
           onMouseEnter={playHoverSound}
           onClick={playSelectSound}
           className="flex items-center gap-1.5 group shrink-0"
         >
-          {/* Manga Ink Box Frame */}
           <div className="relative border-2 border-white bg-black px-2 py-0.5 sm:px-2.5 sm:py-1 transition-all group-hover:border-[#00FF66] shadow-[1px_1px_0_#00FF66] sm:shadow-[2px_2px_0_#00FF66]">
             <div className="flex items-center gap-1 sm:gap-1.5">
               <span className="text-[9px] sm:text-[10px] font-bold text-[#00FF66] tracking-tighter [font-family:var(--font-manga)]">
                 ゼジ
               </span>
-              <span 
+              <span
                 data-text="ZEJI"
                 className="font-game font-black tracking-widest text-base sm:text-xl text-white game-glitch-text"
               >
                 ZEJI
               </span>
             </div>
-            {/* Corner registration crosshair */}
             <span className="absolute -top-1 -right-1 text-[7px] sm:text-[8px] text-[#00FF66] leading-none select-none font-mono">
               +
             </span>
@@ -67,7 +66,7 @@ export const GameNavbar: React.FC = () => {
         </Link>
 
         {/* Center: High-Contrast Japanese Manga Style Panels for Menu Navigation */}
-        <nav className="hidden lg:flex items-center gap-1.5 xl:gap-2">
+        <nav className="hidden lg:flex items-center gap-1 xl:gap-1.5">
           {navLinks.map((link) => {
             const isActive = location.pathname === link.path;
             return (
@@ -76,42 +75,38 @@ export const GameNavbar: React.FC = () => {
                 to={link.path}
                 onMouseEnter={playHoverSound}
                 onClick={playSelectSound}
-                className={`relative px-3 xl:px-4 py-1.5 transition-all text-xs select-none group border-2 ${
-                  isActive 
-                    ? 'bg-white text-black border-white shadow-[3px_3px_0_#00FF66] translate-x-[-1px] translate-y-[-1px]' 
+                className={`relative px-2.5 xl:px-3.5 py-1.5 transition-all text-xs select-none group border-2 ${
+                  isActive
+                    ? 'bg-white text-black border-white shadow-[3px_3px_0_#00FF66] translate-x-[-1px] translate-y-[-1px]'
                     : 'bg-black text-white border-zinc-700 hover:border-white hover:text-[#00FF66] hover:shadow-[2px_2px_0_#00FF66]'
                 }`}
                 style={{
                   clipPath: 'polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px))'
                 }}
               >
-                {/* Active Halftone Screentone overlay for active panel */}
                 {isActive && (
                   <span className="absolute inset-0 manga-screentone-paper opacity-20 pointer-events-none"></span>
                 )}
 
-                <div className="flex items-center gap-1.5 relative z-10">
-                  {/* Chapter Badge */}
+                <div className="flex items-center gap-1 relative z-10">
                   <span className={`text-[9px] px-1 py-0.2 font-mono font-bold border ${
-                    isActive 
-                      ? 'bg-black text-[#00FF66] border-black' 
+                    isActive
+                      ? 'bg-black text-[#00FF66] border-black'
                       : 'bg-zinc-900 text-zinc-400 border-zinc-700 group-hover:text-white group-hover:border-[#00FF66]'
                   }`}>
                     {link.chapter}
                   </span>
 
-                  {/* Main Title with subtle game glitch on hover */}
-                  <span 
+                  <span
                     data-text={link.name}
-                    className={`font-game font-extrabold tracking-wider text-[11px] xl:text-xs game-glitch-text ${
+                    className={`font-game font-extrabold tracking-wider text-[10px] xl:text-xs game-glitch-text ${
                       isActive ? 'text-black' : 'text-white'
                     }`}
                   >
                     {link.name}
                   </span>
 
-                  {/* Japanese Kanji Label with subtle glitch */}
-                  <span 
+                  <span
                     data-text={link.jp}
                     className={`text-[10px] [font-family:var(--font-manga)] tracking-tight font-bold game-glitch-text ${
                       isActive ? 'text-black/80 font-black' : 'text-[#00FF66]'
@@ -121,7 +116,6 @@ export const GameNavbar: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Floating Katakana Sound Effect on Hover */}
                 <span className="absolute -top-3 right-0 text-[8px] font-bold text-[#00FF66] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none [font-family:var(--font-manga)] drop-shadow-[0_0_4px_#00FF66]">
                   {link.sfxKatakana}
                 </span>
@@ -130,8 +124,46 @@ export const GameNavbar: React.FC = () => {
           })}
         </nav>
 
-        {/* Right Tools: Cart Requisition Box & Mobile Toggle */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Right Tools: Quick Mobile/Web Account & Admin Pills + Cart Requisition Box & Mobile Toggle */}
+        <div className="flex items-center gap-1 sm:gap-1.5">
+          {/* Quick Account Pill (Synced on Mobile & Web) */}
+          <Link
+            to="/account"
+            onClick={playSelectSound}
+            onMouseEnter={playHoverSound}
+            className={`px-1.5 py-1 sm:px-2 sm:py-1.5 border-2 transition-all flex items-center gap-1 shadow-[1px_1px_0_#00FF66] ${
+              location.pathname === '/account'
+                ? 'bg-white text-black border-white'
+                : account
+                  ? 'bg-black text-[#00FF66] border-[#00FF66] hover:bg-[#00FF66] hover:text-black'
+                  : 'bg-black text-white border-zinc-700 hover:border-white'
+            }`}
+            title={account ? `Signed in as ${account.name}` : 'Account Sign In / Sign Up'}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span className="text-[9px] sm:text-[10px] font-game font-bold hidden xs:inline">
+              {account ? account.name.split(' ')[0].toUpperCase() : 'AUTH'}
+            </span>
+          </Link>
+
+          {/* Mobile Quick Admin Pane Trigger */}
+          <Link
+            to="/admin"
+            onClick={playSelectSound}
+            onMouseEnter={playHoverSound}
+            className={`lg:hidden px-1.5 py-1 sm:px-2 sm:py-1.5 border-2 transition-all flex items-center gap-1 shadow-[1px_1px_0_#00FF66] ${
+              location.pathname === '/admin'
+                ? 'bg-[#00FF66] text-black border-white'
+                : isAdmin
+                  ? 'bg-black text-[#00FF66] border-[#00FF66]'
+                  : 'bg-black text-zinc-300 border-zinc-700 hover:border-[#00FF66] hover:text-[#00FF66]'
+            }`}
+            title="Open Mobile Admin Pane"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span className="text-[9px] font-game font-bold">ADMIN</span>
+          </Link>
+
           {/* Cart Trigger: Manga Armory Requisition Box */}
           <button
             onClick={() => {
@@ -167,21 +199,19 @@ export const GameNavbar: React.FC = () => {
       {/* Mobile Japanese Manga Comic Menu Drawer (目次 // CHAPTER INDEX) */}
       {mobileMenuOpen && (
         <div className="lg:hidden border-t-2 border-white bg-black px-3 py-3.5 sm:px-4 sm:py-5 shadow-[0_4px_0_#00FF66] relative overflow-hidden">
-          {/* Subtle Screentone Backdrop */}
           <div className="absolute inset-0 manga-screentone-white opacity-5 pointer-events-none"></div>
 
-          {/* Manga Header Banner */}
           <div className="flex items-center justify-between pb-2 mb-2.5 sm:pb-3 sm:mb-3 border-b-2 border-zinc-800">
             <span className="text-[10px] sm:text-[11px] font-game font-black text-white tracking-widest flex items-center gap-1.5">
               <span className="text-[#00FF66] [font-family:var(--font-manga)]">【 目次 】</span>
-              PANEL INDEX
+              PANEL INDEX (WEB & MOBILE SYNCED)
             </span>
             <span className="text-[8px] sm:text-[9px] font-mono text-[#00FF66] border border-[#00FF66] px-1.5 py-0.5">
               SELECT CHAPTER
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 relative z-10">
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2 relative z-10">
             {navLinks.map((link) => {
               const isActive = location.pathname === link.path;
               return (
@@ -193,8 +223,8 @@ export const GameNavbar: React.FC = () => {
                     setMobileMenuOpen(false);
                   }}
                   className={`flex items-center justify-between p-2 sm:p-3 border-2 transition-all ${
-                    isActive 
-                      ? 'bg-white text-black border-white shadow-[2px_2px_0_#00FF66] sm:shadow-[3px_3px_0_#00FF66]' 
+                    isActive
+                      ? 'bg-white text-black border-white shadow-[2px_2px_0_#00FF66] sm:shadow-[3px_3px_0_#00FF66]'
                       : 'bg-[#080808] text-white border-zinc-800 hover:border-white hover:bg-zinc-950 hover:shadow-[1px_1px_0_#00FF66]'
                   }`}
                   style={{
@@ -208,7 +238,7 @@ export const GameNavbar: React.FC = () => {
                       第{link.chapter}話
                     </span>
                     <div>
-                      <span 
+                      <span
                         data-text={link.name}
                         className={`block font-game font-black text-xs sm:text-sm tracking-wider game-glitch-text ${
                           isActive ? 'text-black' : 'text-white'
@@ -216,7 +246,7 @@ export const GameNavbar: React.FC = () => {
                       >
                         {link.name}
                       </span>
-                      <span 
+                      <span
                         data-text={link.jp}
                         className={`text-[9px] sm:text-[10px] [font-family:var(--font-manga)] font-bold game-glitch-text ${
                           isActive ? 'text-black/80' : 'text-[#00FF66]'

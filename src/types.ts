@@ -5,6 +5,7 @@ export interface Track {
   coverUrl: string;
   audioUrl: string;
   duration: string;
+  price?: number;
 }
 
 export interface Product {
@@ -12,7 +13,7 @@ export interface Product {
   name: string;
   price: number;
   image: string;
-  category: 'Apparel' | 'Music' | 'Digital' | string;
+  category: 'Apparel' | 'Music' | 'Digital' | 'Ticket' | string;
   description: string;
   inStock?: boolean;
   downloadUrl?: string;
@@ -31,6 +32,7 @@ export interface TourDate {
   ticketUrl: string;
   isSoldOut: boolean;
   posterUrl?: string;
+  price?: number;
 }
 
 export interface BlogPost {
@@ -49,6 +51,7 @@ export interface Album {
   year: number;
   coverUrl: string;
   tracks: Track[];
+  price?: number;
 }
 
 export interface HomeContent {
@@ -79,15 +82,31 @@ export interface CustomerDetails {
   phone?: string;
 }
 
+export type PaymentMethodId = 'card' | 'paypal' | 'mpesa' | 'paystack';
+
+export interface PaymentGatewayConfig {
+  id: PaymentMethodId;
+  name: string;
+  provider: string;
+  enabled: boolean;
+  mode: 'sandbox' | 'live';
+  publicKeyOrMerchantId?: string;
+  webhookOrEndpointUrl?: string;
+  currency: string;
+  description: string;
+}
+
 export interface Order {
   id: string;
+  userId?: string;
   createdAt: string;
   customer: CustomerDetails;
   items: OrderItem[];
   subtotal: number;
   shippingFee: number;
   total: number;
-  paymentMethod: 'card' | 'paypal' | 'mpesa';
+  paymentMethod: PaymentMethodId;
+  gatewayReference?: string;
   status: 'processing' | 'dispatched' | 'delivered';
   receiptUrl?: string;
 }
@@ -101,4 +120,53 @@ export interface ContactMessage {
   message: string;
   status: 'unread' | 'read' | 'replied';
   attachmentUrl?: string;
+}
+
+export interface UserPreferences {
+  volume: number;
+  sfxMuted: boolean;
+  orchestraPreset: string;
+  favoriteTrackIds: string[];
+  preferredPaymentMethod: PaymentMethodId;
+  defaultShipping?: CustomerDetails;
+}
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  email: string;
+  role: 'user' | 'admin';
+  createdAt: string;
+  lastLoginAt?: string;
+  preferences: UserPreferences;
+  savedCart?: CartItem[];
+  purchasedTrackIds?: string[];
+  encryptionBadge?: string;
+}
+
+export interface VaultAuditEntry {
+  id: string;
+  timestamp: string;
+  actorEmail: string;
+  actorRole: string;
+  action: string;
+  resource: string;
+}
+
+export interface AdminVaultSnapshot {
+  cipherAlgorithm: string;
+  keyDerivation: string;
+  encryptedAtRest: boolean;
+  lastEncryptedWrite: string;
+  counts: {
+    users: number;
+    orders: number;
+    products: number;
+    tracks: number;
+    tourDates: number;
+    blogPosts: number;
+    contactMessages: number;
+  };
+  users: UserAccount[];
+  auditLogs: VaultAuditEntry[];
 }

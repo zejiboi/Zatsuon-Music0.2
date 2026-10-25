@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import { GameNavbar } from './GameNavbar';
 import { MediaPlayer } from './MediaPlayer';
 import { CartSidebar } from './CartSidebar';
 import { TopGameLoadingBar } from './TopGameLoadingBar';
 import { SoundAndAISidebar } from './SoundAndAISidebar';
-import { AIChatbot } from './AIChatbot';
 import { VerticalSpectrogram } from './VerticalSpectrogram';
 import { useStore } from '../store/useStore';
 import { useSiteStore } from '../store/useSiteStore';
@@ -17,10 +16,9 @@ import { darkOrchestra } from '../lib/darkOrchestraEngine';
 export const Layout: React.FC = () => {
   const { isPlaying, togglePlayPause, setIsCartOpen } = useStore();
   const { isPlaying: isOrchestraPlaying } = useDarkOrchestra();
-  const { user, logout } = useSiteStore();
+  const { user, account, logout } = useSiteStore();
   const location = useLocation();
   const navigate = useNavigate();
-  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
   // Universal click & hover sound listeners
   useEffect(() => {
@@ -67,6 +65,12 @@ export const Layout: React.FC = () => {
       } else if (e.key === '6') {
         playSelectSound();
         navigate('/contact');
+      } else if (e.key === '7') {
+        playSelectSound();
+        navigate('/account');
+      } else if (e.key === '8') {
+        playSelectSound();
+        navigate('/admin');
       } else if (e.key === 'Escape') {
         setIsCartOpen(false);
       }
@@ -77,6 +81,9 @@ export const Layout: React.FC = () => {
   }, [navigate, togglePlayPause, setIsCartOpen]);
 
   const hasAudioActive = isPlaying || isOrchestraPlaying;
+  const isAdmin =
+    account?.role === 'admin' || user?.email === 'josephgitongaofficial@gmail.com';
+  const isLoggedIn = Boolean(account || user);
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#000000] text-[#f4f4f5] relative selection:bg-[#00FF66] selection:text-black overflow-x-hidden">
@@ -84,14 +91,14 @@ export const Layout: React.FC = () => {
       <TopGameLoadingBar />
 
       {/* Mirrored Vertical Spectrogram Visualizers on Left & Right Edges */}
-      <VerticalSpectrogram 
-        side="left" 
-        isPlaying={hasAudioActive} 
+      <VerticalSpectrogram
+        side="left"
+        isPlaying={hasAudioActive}
         className="w-1.5 sm:w-7 md:w-10"
       />
-      <VerticalSpectrogram 
-        side="right" 
-        isPlaying={hasAudioActive} 
+      <VerticalSpectrogram
+        side="right"
+        isPlaying={hasAudioActive}
         className="w-1.5 sm:w-7 md:w-10"
       />
 
@@ -101,12 +108,12 @@ export const Layout: React.FC = () => {
         <div className="absolute bottom-[-15%] right-[-10%] w-[600px] h-[600px] bg-[#00FF66] opacity-[0.05] rounded-full blur-[180px]"></div>
       </div>
 
-      <div className="relative z-10 flex flex-col min-h-screen">
+      <div className="relative z-10 flex flex-col min-h-screen pb-20 sm:pb-24">
         {/* Game Menu Header */}
         <GameNavbar />
 
         {/* Dynamic Route Screen Viewport with optimized mobile and tablet spacing */}
-        <main className="flex-grow flex flex-col relative pb-28 sm:pb-32 px-2 xs:px-3 sm:px-8 md:px-12">
+        <main className="flex-grow flex flex-col relative pb-12 sm:pb-16 px-2 xs:px-3 sm:px-8 md:px-12">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -130,20 +137,32 @@ export const Layout: React.FC = () => {
               </span>
               <span className="font-game font-black text-white tracking-wider">ZEJI · ゼジ</span>
               <span className="text-zinc-500">&bull;</span>
-              <span className="text-[11px] text-zinc-400">&copy; {new Date().getFullYear()} MANGA EXPERIENCE</span>
+              <span className="text-[11px] text-zinc-400">
+                &copy; {new Date().getFullYear()} MANGA EXPERIENCE
+              </span>
             </div>
 
-            <div className="flex items-center gap-4 text-[11px]">
+            <div className="flex flex-wrap items-center justify-center gap-4 text-[11px]">
               <span className="text-[#00FF66] font-bold hidden sm:inline">
                 【 黒 &bull; 白 &bull; 蛍光緑 】
               </span>
               <Link
+                to="/account"
+                className="hover:text-[#00FF66] text-zinc-300 transition-colors font-mono flex items-center gap-1"
+              >
+                <span>
+                  {account ? `OPERATIVE [${account.name.toUpperCase()}]` : 'ACCOUNT // 隊員登録'}
+                </span>
+              </Link>
+              <Link
                 to="/admin"
                 className="hover:text-[#00FF66] text-zinc-400 transition-colors font-mono flex items-center gap-1.5"
               >
-                <span>{user?.email === 'josephgitongaofficial@gmail.com' ? '【 ADMIN CONSOLE // 管理 】' : 'ADMIN ACCESS // 司令'}</span>
+                <span>
+                  {isAdmin ? '【 ADMIN CONSOLE // 管理 】' : 'ADMIN ACCESS // 司令'}
+                </span>
               </Link>
-              {user && (
+              {isLoggedIn && (
                 <button
                   onClick={logout}
                   className="hover:text-red-400 text-zinc-500 transition-colors font-mono"
@@ -155,25 +174,16 @@ export const Layout: React.FC = () => {
             </div>
           </div>
         </footer>
-
-        {/* Locked Bottom Audio Player */}
-        <MediaPlayer />
-
-        {/* Cart Sidebar */}
-        <CartSidebar />
-
-        {/* Sound & Ambient Engine Sidebar */}
-        <SoundAndAISidebar 
-          onOpenAIChat={() => setIsAIChatOpen(!isAIChatOpen)} 
-          isAIChatOpen={isAIChatOpen} 
-        />
-
-        {/* AI Copilot Drawer */}
-        <AIChatbot 
-          isOpen={isAIChatOpen} 
-          onClose={() => setIsAIChatOpen(false)} 
-        />
       </div>
+
+      {/* Viewport-Locked Floating Bottom Audio Player (persists across all scroll & routes) */}
+      <MediaPlayer />
+
+      {/* Cart Sidebar */}
+      <CartSidebar />
+
+      {/* Sound & Ambient Engine Sidebar (AI Chatbot completely removed per specification) */}
+      <SoundAndAISidebar />
     </div>
   );
 };

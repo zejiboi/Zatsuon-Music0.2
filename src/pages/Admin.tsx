@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  ShieldAlert, ShieldCheck, Plus, Trash2, Edit3, Save, X, 
+  ShieldAlert, ShieldCheck, Trash2, Edit3, Save, X, 
   Disc, ShoppingBag, MapPin, FileText, Mail, Home as HomeIcon, 
-  CheckCircle, Truck, Package, Download, ExternalLink, Image as ImageIcon,
-  LogOut, LogIn, ArrowRight, RefreshCw, Upload, Music, AlertCircle
+  CheckCircle, Package, Download,
+  LogOut, LogIn, RefreshCw, Upload, CreditCard, Lock, Database,
+  DollarSign, Users, KeyRound, Sparkles, Smartphone
 } from 'lucide-react';
 import { useSiteStore } from '../store/useSiteStore';
-import { Track, Product, TourDate, BlogPost, HomeContent, Order, ContactMessage } from '../types';
-import { playHoverSound, playSelectSound, playEquipSound } from '../lib/gameSound';
+import { Track, Product, TourDate, BlogPost, HomeContent, PaymentGatewayConfig } from '../types';
+import { playHoverSound, playSelectSound, playEquipSound, playCancelSound } from '../lib/gameSound';
 
 // Utility: Convert File to base64 Data URL for persistent in-browser & DB playback
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -56,32 +57,52 @@ const extractAudioDuration = (file: File): Promise<string> => {
   });
 };
 
+type AdminSectorId = 'home' | 'sound' | 'store' | 'orders' | 'tour' | 'intel' | 'comms' | 'gateways' | 'vault';
+
 export const Admin: React.FC = () => {
   const {
-    user, isAuthLoaded, login, logout,
+    user, account, isAuthLoaded, login, loginWithPassword, logout,
     tracks, addTrack, updateTrack, deleteTrack,
     products, addProduct, updateProduct, deleteProduct,
     tourDates, addTourDate, updateTourDate, deleteTourDate,
     blogPosts, addBlogPost, updateBlogPost, deleteBlogPost,
     homeContent, updateHomeContent,
     orders, updateOrderStatus, updateOrderReceipt,
-    contactMessages, updateMessageStatus, updateMessageAttachment
+    contactMessages, updateMessageStatus, updateMessageAttachment,
+    paymentGateways, updatePaymentGateway,
+    vaultSnapshot, fetchAdminVault, updateUserRole
   } = useSiteStore();
 
-  const [activeSector, setActiveSector] = useState<'home' | 'sound' | 'store' | 'orders' | 'tour' | 'intel' | 'comms'>('home');
+  const [activeSector, setActiveSector] = useState<AdminSectorId>('store');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
   const [isExtractingDuration, setIsExtractingDuration] = useState(false);
+
+  // Admin Login Form State (for direct encrypted backend auth on Desktop & Mobile)
+  const [adminEmail, setAdminEmail] = useState('josephgitongaofficial@gmail.com');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
+  const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
+
+  // Quick inline price state maps
+  const [quickProductPrices, setQuickProductPrices] = useState<Record<string, string>>({});
+  const [quickTrackPrices, setQuickTrackPrices] = useState<Record<string, string>>({});
+  const [quickTourPrices, setQuickTourPrices] = useState<Record<string, string>>({});
 
   // 1. Home Sector File Upload State
   const [homeForm, setHomeForm] = useState<HomeContent>(homeContent);
   const [homeHeroFile, setHomeHeroFile] = useState<File | null>(null);
   const [homeHeroPreview, setHomeHeroPreview] = useState<string>('');
 
+  useEffect(() => {
+    setHomeForm(homeContent);
+  }, [homeContent]);
+
   // 2. Sound Sector File Upload State
   const [newTrack, setNewTrack] = useState({
     title: '',
     album: 'MIDNIGHT ECHOES',
     duration: '',
+    price: 1.99,
     coverUrl: '',
     audioUrl: ''
   });
@@ -93,6 +114,7 @@ export const Admin: React.FC = () => {
     title: '',
     album: '',
     duration: '',
+    price: 1.99,
     coverUrl: '',
     audioUrl: ''
   });
@@ -131,6 +153,7 @@ export const Admin: React.FC = () => {
     venue: '',
     city: '',
     country: '',
+    price: 45,
     ticketUrl: '',
     isSoldOut: false,
     posterUrl: ''
@@ -143,6 +166,7 @@ export const Admin: React.FC = () => {
     venue: '',
     city: '',
     country: '',
+    price: 45,
     ticketUrl: '',
     isSoldOut: false,
     posterUrl: ''
@@ -171,9 +195,48 @@ export const Admin: React.FC = () => {
   const [editBlogImageFile, setEditBlogImageFile] = useState<File | null>(null);
   const [editBlogAttachmentFile, setEditBlogAttachmentFile] = useState<File | null>(null);
 
+  // Gateway edit state
+  const [gatewayDrafts, setGatewayDrafts] = useState<Record<string, PaymentGatewayConfig>>({});
+
+  useEffect(() => {
+    const map: Record<string, PaymentGatewayConfig> = {};
+    paymentGateways.forEach(gw => {
+      map[gw.id] = { ...gw };
+    });
+    setGatewayDrafts(map);
+  }, [paymentGateways]);
+
+  const isAdmin = Boolean(
+    account?.role === 'admin' ||
+    (user && user.email === 'josephgitongaofficial@gmail.com')
+  );
+
+  useEffect(() => {
+    if (isAdmin && activeSector === 'vault') {
+      fetchAdminVault();
+    }
+  }, [isAdmin, activeSector]);
+
   const showNotification = (msg: string) => {
     setSaveSuccessMsg(msg);
     setTimeout(() => setSaveSuccessMsg(''), 4000);
+  };
+
+  const handleAdminPasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminLoginError(null);
+    setIsAdminLoggingIn(true);
+    playSelectSound();
+    try {
+      await loginWithPassword(adminEmail, adminPassword);
+      playEquipSound();
+      showNotification('Root Admin clearance verified. Encrypted repositories unlocked.');
+    } catch (err: any) {
+      setAdminLoginError(err?.message || 'Invalid root credentials.');
+      playCancelSound();
+    } finally {
+      setIsAdminLoggingIn(false);
+    }
   };
 
   // 1. Loading State
@@ -188,14 +251,12 @@ export const Admin: React.FC = () => {
     );
   }
 
-  // 2. Strict Security Access Guard: Only josephgitongaofficial@gmail.com
-  const isAdmin = user && user.email === 'josephgitongaofficial@gmail.com';
-
+  // 2. Strict Security Access Guard: Root Admin Login Console (Works on Desktop & Mobile)
   if (!isAdmin) {
     return (
-      <div className="max-w-[700px] mx-auto px-4 sm:px-8 py-20 relative z-10 font-sans">
+      <div className="max-w-[720px] mx-auto px-3 sm:px-8 py-10 sm:py-16 relative z-10 font-sans pb-28">
         <div 
-          className="bg-black border-2 border-white p-8 sm:p-12 shadow-[8px_8px_0_#ff0055] text-white relative overflow-hidden"
+          className="bg-black border-2 border-white p-5 sm:p-10 shadow-[8px_8px_0_#ff0055] text-white relative overflow-hidden"
           style={{
             clipPath: 'polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px))'
           }}
@@ -208,58 +269,113 @@ export const Admin: React.FC = () => {
               <span className="text-[10px] font-mono text-red-400 font-bold uppercase tracking-widest block">
                 【 警報 】 ROOT CLEARANCE REQUIRED // 権限拒否
               </span>
-              <h1 className="text-2xl sm:text-3xl font-game font-black text-white uppercase tracking-tight">
-                ACCESS RESTRICTED
+              <h1 className="text-xl sm:text-3xl font-game font-black text-white uppercase tracking-tight">
+                ADMIN COMMAND AUTHENTICATION
               </h1>
             </div>
           </div>
 
           <div className="p-4 bg-zinc-950 border border-zinc-800 font-mono text-xs space-y-2 mb-6">
             <p className="text-zinc-300 leading-relaxed">
-              This master command terminal is restricted exclusively to the authorized system administrator:
+              This master command terminal (Desktop &amp; Mobile Admin Pane) is restricted exclusively to authorized system administrators:
             </p>
-            <div className="p-2 bg-black border border-zinc-700 text-[#00FF66] font-bold">
-              josephgitongaofficial@gmail.com
+            <div className="p-2 bg-black border border-zinc-700 text-[#00FF66] font-bold flex items-center justify-between flex-wrap gap-2">
+              <span>josephgitongaofficial@gmail.com</span>
+              <span className="text-[10px] text-zinc-400">AES-256-GCM VAULT GUARD</span>
             </div>
             <div className="text-zinc-500 text-[11px] pt-1">
               {user ? (
-                <span>Current identity: <strong className="text-white">{user.email}</strong> (Unauthorized)</span>
+                <span>Current identity: <strong className="text-white">{user.email}</strong> (Standard Operative - Root Required)</span>
               ) : (
-                <span>No active operator authentication session detected.</span>
+                <span>No active root operator session detected. Authenticate below.</span>
               )}
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t-2 border-zinc-800">
-            {user ? (
+          {adminLoginError && (
+            <div className="mb-4 p-3 bg-red-950/90 border-2 border-red-500 text-xs font-mono text-red-200">
+              {adminLoginError}
+            </div>
+          )}
+
+          {/* Direct Encrypted Vault Admin Sign-In Form */}
+          <form onSubmit={handleAdminPasswordLogin} className="p-4 sm:p-5 bg-zinc-950 border-2 border-[#00FF66] space-y-4 font-mono text-xs mb-6">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+              <span className="text-[#00FF66] font-game font-black uppercase flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4" /> DIRECT ROOT VAULT LOGIN
+              </span>
               <button
+                type="button"
                 onClick={() => {
-                  playSelectSound();
-                  logout();
+                  playEquipSound();
+                  setAdminEmail('josephgitongaofficial@gmail.com');
+                  setAdminPassword('ZejiAdmin#2026!');
                 }}
-                className="px-6 py-3 bg-red-600 hover:bg-white text-white hover:text-black font-game font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border-2 border-black"
+                className="px-2 py-1 bg-black border border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-black text-[10px] font-bold transition-colors flex items-center gap-1"
               >
-                <LogOut className="w-4 h-4" />
-                <span>SIGN OUT TO SWITCH OPERATOR</span>
+                <Sparkles className="w-3 h-3" />
+                <span>AUTOFILL ROOT DEMO</span>
               </button>
-            ) : (
-              <button
-                onClick={() => {
-                  playSelectSound();
-                  login();
-                }}
-                className="px-8 py-3.5 bg-[#00FF66] hover:bg-white text-black font-game font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border-2 border-black shadow-[3px_3px_0_#ffffff]"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>AUTHENTICATE AS ADMIN (GOOGLE)</span>
-              </button>
-            )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-zinc-400 text-[10px] mb-1">ADMIN EMAIL</label>
+                <input
+                  type="email"
+                  required
+                  value={adminEmail}
+                  onChange={e => setAdminEmail(e.target.value)}
+                  className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-zinc-400 text-[10px] mb-1">ROOT PASSWORD</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••••••"
+                  value={adminPassword}
+                  onChange={e => setAdminPassword(e.target.value)}
+                  className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isAdminLoggingIn}
+              className="w-full py-3 bg-[#00FF66] hover:bg-white text-black font-game font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border-2 border-black shadow-[3px_3px_0_#ffffff]"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>{isAdminLoggingIn ? 'DECRYPTING ROOT SESSION...' : 'UNLOCK MASTER ADMIN TERMINAL // 認証'}</span>
+            </button>
+          </form>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t-2 border-zinc-800">
+            <button
+              onClick={() => {
+                playSelectSound();
+                login();
+              }}
+              className="flex-1 px-5 py-3 bg-zinc-900 hover:bg-white text-white hover:text-black font-game font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-zinc-700"
+            >
+              <LogIn className="w-4 h-4 text-[#00FF66]" />
+              <span>GOOGLE OAUTH SIGN-IN</span>
+            </button>
+
+            <Link
+              to="/account"
+              className="px-5 py-3 bg-black hover:bg-[#00FF66] text-[#00FF66] hover:text-black font-mono font-bold text-xs uppercase tracking-wider transition-all border border-[#00FF66] text-center flex items-center justify-center"
+            >
+              ACCOUNT &amp; ADMIN INVITE
+            </Link>
 
             <Link
               to="/"
-              className="px-6 py-3 bg-black hover:bg-white text-zinc-400 hover:text-black font-mono text-xs uppercase tracking-wider transition-all border border-zinc-700 text-center flex items-center justify-center"
+              className="px-5 py-3 bg-black hover:bg-white text-zinc-400 hover:text-black font-mono text-xs uppercase tracking-wider transition-all border border-zinc-700 text-center flex items-center justify-center"
             >
-              RETURN TO PUBLIC HUB
+              PUBLIC HUB
             </Link>
           </div>
         </div>
@@ -269,7 +385,33 @@ export const Admin: React.FC = () => {
 
   // 3. Fully Authorized Admin Console Actions
 
-  // 3. Fully Authorized Admin Console Actions
+  // Quick Price Update Handlers
+  const handleQuickProductPriceSave = async (p: Product) => {
+    const raw = quickProductPrices[p.id];
+    const parsed = raw !== undefined ? parseFloat(raw) : p.price;
+    if (isNaN(parsed) || parsed < 0) return;
+    playEquipSound();
+    await updateProduct(p.id, { price: Number(parsed.toFixed(2)) });
+    showNotification(`Price for "${p.name}" updated to $${parsed.toFixed(2)} USD.`);
+  };
+
+  const handleQuickTrackPriceSave = async (t: Track) => {
+    const raw = quickTrackPrices[t.id];
+    const parsed = raw !== undefined ? parseFloat(raw) : (t.price ?? 1.99);
+    if (isNaN(parsed) || parsed < 0) return;
+    playEquipSound();
+    await updateTrack(t.id, { price: Number(parsed.toFixed(2)) });
+    showNotification(`Track price for "${t.title}" set to $${parsed.toFixed(2)} USD.`);
+  };
+
+  const handleQuickTourPriceSave = async (t: TourDate) => {
+    const raw = quickTourPrices[t.id];
+    const parsed = raw !== undefined ? parseFloat(raw) : (t.price ?? 45);
+    if (isNaN(parsed) || parsed < 0) return;
+    playEquipSound();
+    await updateTourDate(t.id, { price: Number(parsed.toFixed(2)) });
+    showNotification(`Tour pass price for ${t.city} set to $${parsed.toFixed(2)} USD.`);
+  };
 
   // Save Home Content with File Upload Support
   const handleSaveHome = async (e: React.FormEvent) => {
@@ -344,15 +486,16 @@ export const Admin: React.FC = () => {
       title: newTrack.title,
       album: newTrack.album,
       duration: newTrack.duration || '3:30',
+      price: Number(newTrack.price) >= 0 ? Number(newTrack.price) : 1.99,
       coverUrl: finalCoverUrl || '/src/assets/images/manga_sound_panel_1792583212523.jpg',
       audioUrl: finalAudioUrl || 'https://actions.google.com/sounds/v1/science_fiction/scifi_hum_loop.ogg'
     });
 
     playEquipSound();
-    setNewTrack({ title: '', album: 'MIDNIGHT ECHOES', duration: '', coverUrl: '', audioUrl: '' });
+    setNewTrack({ title: '', album: 'MIDNIGHT ECHOES', duration: '', price: 1.99, coverUrl: '', audioUrl: '' });
     setTrackAudioFile(null);
     setTrackCoverFile(null);
-    showNotification('Audio track registered with extracted duration & synced to playlist.');
+    showNotification('Audio track registered with price & synced to playlist.');
   };
 
   // Start Editing Track
@@ -363,6 +506,7 @@ export const Admin: React.FC = () => {
       title: track.title,
       album: track.album,
       duration: track.duration,
+      price: track.price ?? 1.99,
       coverUrl: track.coverUrl,
       audioUrl: track.audioUrl
     });
@@ -415,6 +559,7 @@ export const Admin: React.FC = () => {
       title: editTrackForm.title,
       album: editTrackForm.album,
       duration: editTrackForm.duration,
+      price: Number(editTrackForm.price) >= 0 ? Number(editTrackForm.price) : 1.99,
       coverUrl: finalCoverUrl,
       audioUrl: finalAudioUrl
     });
@@ -547,15 +692,16 @@ export const Admin: React.FC = () => {
       venue: newTour.venue,
       city: newTour.city,
       country: newTour.country,
+      price: Number(newTour.price) >= 0 ? Number(newTour.price) : 45,
       ticketUrl: newTour.ticketUrl || '#',
       isSoldOut: newTour.isSoldOut,
       posterUrl: finalPosterUrl
     });
 
     playEquipSound();
-    setNewTour({ date: '', venue: '', city: '', country: '', ticketUrl: '', isSoldOut: false, posterUrl: '' });
+    setNewTour({ date: '', venue: '', city: '', country: '', price: 45, ticketUrl: '', isSoldOut: false, posterUrl: '' });
     setTourPosterFile(null);
-    showNotification('World tour sector date logged.');
+    showNotification('World tour sector date & pass price logged.');
   };
 
   // Start Editing Tour Date
@@ -567,6 +713,7 @@ export const Admin: React.FC = () => {
       venue: t.venue,
       city: t.city,
       country: t.country,
+      price: t.price ?? 45,
       ticketUrl: t.ticketUrl,
       isSoldOut: t.isSoldOut ?? false,
       posterUrl: t.posterUrl || ''
@@ -594,6 +741,7 @@ export const Admin: React.FC = () => {
       venue: editTourForm.venue,
       city: editTourForm.city,
       country: editTourForm.country,
+      price: Number(editTourForm.price) >= 0 ? Number(editTourForm.price) : 45,
       ticketUrl: editTourForm.ticketUrl,
       isSoldOut: editTourForm.isSoldOut,
       posterUrl: finalPosterUrl
@@ -726,18 +874,42 @@ export const Admin: React.FC = () => {
     }
   };
 
+  // Save Payment Gateway Configuration
+  const handleSaveGateway = async (id: string) => {
+    const draft = gatewayDrafts[id];
+    if (!draft) return;
+    playEquipSound();
+    await updatePaymentGateway(id as any, draft);
+    showNotification(`Gateway "${draft.name}" API configuration saved.`);
+  };
+
+  const sectorTabs: { id: AdminSectorId; label: string; shortLabel: string; icon: any }[] = [
+    { id: 'store', label: `01 STORE & PRICING (${products.length})`, shortLabel: 'STORE/$', icon: ShoppingBag },
+    { id: 'sound', label: `02 SOUND & TRACKS (${tracks.length})`, shortLabel: 'SOUND/$', icon: Disc },
+    { id: 'tour', label: `03 TOUR & PASSES (${tourDates.length})`, shortLabel: 'TOUR/$', icon: MapPin },
+    { id: 'gateways', label: '04 PAYMENT APIs // 決済', shortLabel: 'GATEWAYS', icon: CreditCard },
+    { id: 'orders', label: `05 ORDERS (${orders.length})`, shortLabel: `ORDERS (${orders.length})`, icon: Package },
+    { id: 'vault', label: '06 ENCRYPTED VAULT // 暗号庫', shortLabel: 'VAULT', icon: Database },
+    { id: 'home', label: '07 HOME HERO // 起動', shortLabel: 'HOME', icon: HomeIcon },
+    { id: 'intel', label: '08 INTEL // 記録', shortLabel: 'INTEL', icon: FileText },
+    { id: 'comms', label: `09 COMMS (${contactMessages.length})`, shortLabel: 'COMMS', icon: Mail },
+  ];
+
   return (
-    <div className="max-w-[1440px] mx-auto px-2 xs:px-3 sm:px-8 py-4 sm:py-8 md:py-12 relative z-10 font-sans w-full pb-24 text-white">
+    <div className="max-w-[1440px] mx-auto px-2 xs:px-3 sm:px-8 py-4 sm:py-8 md:py-12 relative z-10 font-sans w-full pb-28 text-white">
       
       {/* Admin Command Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 sm:gap-4 mb-4 sm:mb-8 pb-3 sm:pb-5 border-b-2 border-white">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 sm:gap-4 mb-4 sm:mb-6 pb-3 sm:pb-5 border-b-2 border-white">
         <div>
-          <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
             <span className="px-1.5 sm:px-2 py-0.5 bg-black text-[#00FF66] border border-[#00FF66] sm:border-2 font-mono text-[10px] sm:text-xs font-black shadow-[1px_1px_0_#ffffff] sm:shadow-[2px_2px_0_#ffffff]">
               特務司令部 // ADMIN ROOT
             </span>
-            <span className="text-[10px] sm:text-xs font-mono text-zinc-400 truncate block">
-              RESTRICTED TO: {user.email}
+            <span className="text-[10px] sm:text-xs font-mono text-zinc-400 truncate">
+              OPERATOR: {account?.email || user?.email}
+            </span>
+            <span className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-700 text-[9px] font-mono text-[#00FF66] md:hidden">
+              MOBILE ADMIN PANE ACTIVE
             </span>
           </div>
           <h1 className="text-2xl xs:text-3xl sm:text-5xl font-game font-black tracking-tight text-white uppercase flex items-center gap-2 sm:gap-3">
@@ -749,7 +921,7 @@ export const Admin: React.FC = () => {
         <div className="flex items-center gap-2 sm:gap-3">
           <span className="px-2 sm:px-3 py-1 bg-black text-[#00FF66] border border-[#00FF66] font-mono text-[10px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2">
             <ShieldCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-            <span>OPERATOR VERIFIED</span>
+            <span>AES-256 ROOT</span>
           </span>
 
           <button
@@ -767,23 +939,48 @@ export const Admin: React.FC = () => {
 
       {/* Success Notification Banner */}
       {saveSuccessMsg && (
-        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-zinc-950 border-2 border-[#00FF66] text-white font-mono text-xs flex items-center gap-2 sm:gap-3 shadow-[2px_2px_0_#ffffff] sm:shadow-[4px_4px_0_#ffffff] animate-fadeIn">
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-zinc-950 border-2 border-[#00FF66] text-white font-mono text-xs flex items-center gap-2 sm:gap-3 shadow-[2px_2px_0_#ffffff] sm:shadow-[4px_4px_0_#ffffff]">
           <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#00FF66] shrink-0" />
           <span className="font-bold">{saveSuccessMsg}</span>
         </div>
       )}
 
-      {/* Sector Navigation Tabs */}
-      <div className="flex items-center gap-1.5 sm:gap-2 pb-3 sm:pb-4 mb-4 sm:mb-6 border-b border-zinc-900 overflow-x-auto no-scrollbar">
-        {[
-          { id: 'home', label: '01 HOME // 起動', icon: HomeIcon },
-          { id: 'sound', label: '02 SOUND // 音響', icon: Disc },
-          { id: 'store', label: '03 STORE // 兵站', icon: ShoppingBag },
-          { id: 'orders', label: `04 ORDERS // 注文 (${orders.length})`, icon: Package },
-          { id: 'tour', label: '05 TOUR // 遠征', icon: MapPin },
-          { id: 'intel', label: '06 INTEL // 記録', icon: FileText },
-          { id: 'comms', label: `07 COMMS // 交信 (${contactMessages.length})`, icon: Mail },
-        ].map((tab) => {
+      {/* DEDICATED MOBILE ADMIN COMMAND MATRIX (3x3 Touch Grid for Mobile Viewports) */}
+      <div className="lg:hidden mb-5 p-3 bg-zinc-950 border-2 border-[#00FF66] shadow-[3px_3px_0_#ffffff]">
+        <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
+          <span className="text-[10px] font-game font-black text-[#00FF66] uppercase flex items-center gap-1.5">
+            <Smartphone className="w-3.5 h-3.5" /> MOBILE ADMIN PANE // 携帯司令盤
+          </span>
+          <span className="text-[9px] font-mono text-zinc-400">TAP SECTOR</span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {sectorTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSector === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  playSelectSound();
+                  setActiveSector(tab.id);
+                }}
+                className={`p-2 border flex flex-col items-center justify-center gap-1 text-[9px] font-mono font-bold transition-all ${
+                  isActive
+                    ? 'bg-[#00FF66] text-black border-white shadow-[2px_2px_0_#ffffff]'
+                    : 'bg-black text-zinc-300 border-zinc-800 hover:border-white'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span className="truncate max-w-full">{tab.shortLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Desktop Sector Navigation Tabs */}
+      <div className="hidden lg:flex items-center gap-2 pb-4 mb-6 border-b border-zinc-900 overflow-x-auto no-scrollbar">
+        {sectorTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSector === tab.id;
           return (
@@ -791,12 +988,12 @@ export const Admin: React.FC = () => {
               key={tab.id}
               onClick={() => {
                 playSelectSound();
-                setActiveSector(tab.id as any);
+                setActiveSector(tab.id);
               }}
               onMouseEnter={playHoverSound}
-              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2.5 border-2 transition-all shrink-0 text-[10px] sm:text-xs font-mono font-bold ${
+              className={`flex items-center gap-2 px-3.5 py-2.5 border-2 transition-all shrink-0 text-xs font-mono font-bold ${
                 isActive
-                  ? 'bg-white text-black border-white shadow-[2px_2px_0_#00FF66] sm:shadow-[3px_3px_0_#00FF66] translate-x-[-1px] translate-y-[-1px]'
+                  ? 'bg-white text-black border-white shadow-[3px_3px_0_#00FF66] translate-x-[-1px] translate-y-[-1px]'
                   : 'bg-black text-zinc-400 border-zinc-800 hover:border-white hover:text-white'
               }`}
               style={{
@@ -844,7 +1041,7 @@ export const Admin: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-zinc-400 mb-1">ALBUM SUBTITLE & GENRE CODING</label>
+                <label className="block text-zinc-400 mb-1">ALBUM SUBTITLE &amp; GENRE CODING</label>
                 <input
                   required
                   type="text"
@@ -927,22 +1124,22 @@ export const Admin: React.FC = () => {
           </div>
         )}
 
-        {/* ---------------- SECTOR 02: SOUND & TRACKS ---------------- */}
+        {/* ---------------- SECTOR 02: SOUND & TRACKS (+ PRICE SETTING) ---------------- */}
         {activeSector === 'sound' && (
           <div className="relative z-10 space-y-8">
-            <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
-              <h2 className="text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
-                <Disc className="w-5 h-5 text-[#00FF66]" /> AUDIO ARCHIVES & STEMS // 音響管理
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b-2 border-zinc-800">
+              <h2 className="text-lg sm:text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
+                <Disc className="w-5 h-5 text-[#00FF66]" /> AUDIO ARCHIVES &amp; TRACK PRICING // 音響・価格管理
               </h2>
               <span className="text-xs font-mono text-[#00FF66] font-bold">{tracks.length} RECORDED TRACKS</span>
             </div>
 
-            {/* Inline Track Edit Panel (Active when editing a track) */}
+            {/* Inline Track Edit Panel */}
             {editingTrack && (
-              <form onSubmit={handleSaveEditTrack} className="p-6 bg-zinc-950 border-2 border-[#00FF66] space-y-4 max-w-3xl font-mono text-xs shadow-[4px_4px_0_#ffffff] animate-fadeIn">
+              <form onSubmit={handleSaveEditTrack} className="p-4 sm:p-6 bg-zinc-950 border-2 border-[#00FF66] space-y-4 max-w-3xl font-mono text-xs shadow-[4px_4px_0_#ffffff]">
                 <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                   <span className="text-xs font-game font-black text-[#00FF66] uppercase flex items-center gap-2">
-                    <Edit3 className="w-4 h-4" /> 【 編集 】 EDIT TRACK: {editingTrack.title}
+                    <Edit3 className="w-4 h-4" /> 【 編集 】 EDIT TRACK &amp; PRICE: {editingTrack.title}
                   </span>
                   <button
                     type="button"
@@ -953,7 +1150,7 @@ export const Admin: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-zinc-400 mb-1">TRACK TITLE *</label>
                     <input
@@ -975,8 +1172,20 @@ export const Admin: React.FC = () => {
                     />
                   </div>
 
-                  {/* Auto-extracted duration status display (no manual typing) */}
-                  <div className="sm:col-span-2 p-3 bg-black border border-zinc-700 flex items-center justify-between">
+                  <div>
+                    <label className="block text-[#00FF66] font-bold mb-1">TRACK PRICE (USD) *</label>
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editTrackForm.price}
+                      onChange={e => setEditTrackForm({ ...editTrackForm, price: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-black border-2 border-[#00FF66] p-2.5 text-white font-bold outline-none"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-3 p-3 bg-black border border-zinc-700 flex items-center justify-between">
                     <div>
                       <span className="text-zinc-400 text-[10px] block font-mono">TRACK DURATION (EXTRACTED FROM AUDIO):</span>
                       <span className="text-[#00FF66] font-mono font-bold text-sm">
@@ -996,7 +1205,7 @@ export const Admin: React.FC = () => {
                     />
                   </div>
 
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="block text-zinc-400 mb-1">REPLACE COVER ART FILE (OPTIONAL)</label>
                     <input
                       type="file"
@@ -1006,7 +1215,7 @@ export const Admin: React.FC = () => {
                     />
                   </div>
 
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-3">
                     <label className="block text-zinc-400 mb-1">AUDIO STREAM URL (FALLBACK)</label>
                     <input
                       type="text"
@@ -1036,12 +1245,12 @@ export const Admin: React.FC = () => {
             )}
 
             {/* Upload Track Form */}
-            <form onSubmit={handleCreateTrack} className="p-5 bg-zinc-950 border border-zinc-800 space-y-4 max-w-3xl font-mono text-xs">
+            <form onSubmit={handleCreateTrack} className="p-4 sm:p-5 bg-zinc-950 border border-zinc-800 space-y-4 max-w-3xl font-mono text-xs">
               <span className="text-xs font-game font-black text-[#00FF66] block uppercase tracking-wider">
-                + UPLOAD & REGISTER NEW TRACK (.MP3 / .WAV)
+                + UPLOAD &amp; LIST NEW TRACK WITH PRICE (.MP3 / .WAV)
               </span>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-zinc-400 mb-1">TRACK TITLE *</label>
                   <input
@@ -1065,8 +1274,20 @@ export const Admin: React.FC = () => {
                   />
                 </div>
 
-                {/* Auto-extracted duration display (no manual typing option) */}
-                <div className="sm:col-span-2 p-3 bg-black border border-zinc-700 flex items-center justify-between">
+                <div>
+                  <label className="block text-[#00FF66] font-bold mb-1">TRACK PRICE (USD) *</label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newTrack.price}
+                    onChange={e => setNewTrack({ ...newTrack, price: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-black border-2 border-[#00FF66] p-2.5 text-white font-bold outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-3 p-3 bg-black border border-zinc-700 flex items-center justify-between">
                   <div>
                     <span className="text-zinc-400 text-[10px] block font-mono">AUTOMATIC AUDIO DURATION:</span>
                     <span className="text-[#00FF66] font-mono font-bold text-sm flex items-center gap-1.5">
@@ -1082,15 +1303,10 @@ export const Admin: React.FC = () => {
                       )}
                     </span>
                   </div>
-                  {newTrack.duration && !isExtractingDuration && (
-                    <span className="px-2 py-0.5 bg-[#00FF66]/20 border border-[#00FF66] text-[#00FF66] text-[10px] font-bold">
-                      VERIFIED ✓
-                    </span>
-                  )}
                 </div>
 
                 <div>
-                  <label className="block text-zinc-400 mb-1">UPLOAD AUDIO FILE (.MP3 / .WAV) *</label>
+                  <label className="block text-zinc-400 mb-1">UPLOAD AUDIO FILE (.MP3 / .WAV)</label>
                   <input
                     type="file"
                     accept="audio/mp3,audio/wav,audio/mpeg,audio/wave,audio/x-wav,.mp3,.wav"
@@ -1099,7 +1315,7 @@ export const Admin: React.FC = () => {
                   />
                 </div>
 
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-zinc-400 mb-1">COVER ART FILE (OPTIONAL)</label>
                   <input
                     type="file"
@@ -1109,7 +1325,7 @@ export const Admin: React.FC = () => {
                   />
                 </div>
 
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-3">
                   <label className="block text-zinc-400 mb-1">EXTERNAL STREAM URL (OPTIONAL FALLBACK)</label>
                   <input
                     type="text"
@@ -1126,33 +1342,54 @@ export const Admin: React.FC = () => {
                 onMouseEnter={playHoverSound}
                 className="px-6 py-3 bg-[#00FF66] hover:bg-white text-black font-game font-black text-xs uppercase tracking-wider transition-all border-2 border-black shadow-[3px_3px_0_#ffffff]"
               >
-                + ADD TRACK TO PLAYLIST
+                + ADD TRACK TO PLAYLIST &amp; STORE
               </button>
             </form>
 
-            {/* Existing Tracks Management List */}
+            {/* Existing Tracks Management List with Inline Quick Price Setter */}
             <div className="space-y-3 font-mono text-xs">
               <span className="text-xs font-game font-black text-white block uppercase">
-                EXISTING AUDIO CHRONICLES
+                EXISTING AUDIO CHRONICLES &amp; INLINE PRICE CONTROL
               </span>
 
               {tracks.map((t, idx) => (
-                <div key={t.id} className="p-4 bg-black border border-zinc-800 flex items-center justify-between gap-4 hover:border-[#00FF66] transition-colors">
-                  <div className="flex items-center gap-4 min-w-0">
+                <div key={t.id} className="p-3 sm:p-4 bg-black border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#00FF66] transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
                     <span className="text-[#00FF66] font-bold">0{idx + 1}</span>
                     <div className="w-10 h-10 border border-white bg-zinc-900 shrink-0 overflow-hidden">
                       <img src={t.coverUrl} alt={t.title} className="w-full h-full object-cover" />
                     </div>
                     <div className="min-w-0">
                       <h4 className="font-game font-bold text-white text-sm truncate">{t.title}</h4>
-                      <span className="text-zinc-500 text-[10px]">{t.album} &bull; {t.duration}</span>
+                      <span className="text-zinc-500 text-[10px]">{t.album} &bull; {t.duration} &bull; <strong className="text-[#00FF66]">${(t.price ?? 1.99).toFixed(2)} USD</strong></span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {/* Inline Quick Price Editor */}
+                    <div className="flex items-center border border-zinc-700 bg-zinc-950">
+                      <span className="px-2 text-[10px] text-[#00FF66] font-bold">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={quickTrackPrices[t.id] !== undefined ? quickTrackPrices[t.id] : String(t.price ?? 1.99)}
+                        onChange={e => setQuickTrackPrices({ ...quickTrackPrices, [t.id]: e.target.value })}
+                        className="w-16 bg-black text-white px-1.5 py-1 text-xs outline-none border-x border-zinc-800"
+                        aria-label={`Set price for ${t.title}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleQuickTrackPriceSave(t)}
+                        className="px-2 py-1 bg-[#00FF66] text-black hover:bg-white font-bold text-[10px] uppercase transition-colors"
+                      >
+                        SET PRICE
+                      </button>
+                    </div>
+
                     <button
                       onClick={() => handleStartEditTrack(t)}
-                      className="px-3 py-1.5 border border-zinc-600 text-zinc-300 hover:border-[#00FF66] hover:text-[#00FF66] transition-colors text-[10px] uppercase font-bold flex items-center gap-1"
+                      className="px-2.5 py-1.5 border border-zinc-600 text-zinc-300 hover:border-[#00FF66] hover:text-[#00FF66] transition-colors text-[10px] uppercase font-bold flex items-center gap-1"
                     >
                       <Edit3 className="w-3 h-3" />
                       <span>EDIT</span>
@@ -1163,7 +1400,7 @@ export const Admin: React.FC = () => {
                         deleteTrack(t.id);
                         showNotification(`Track "${t.title}" deleted.`);
                       }}
-                      className="px-3 py-1.5 border border-red-500 text-red-400 hover:bg-red-500 hover:text-white transition-colors text-[10px] uppercase font-bold"
+                      className="px-2.5 py-1.5 border border-red-500 text-red-400 hover:bg-red-500 hover:text-white transition-colors text-[10px] uppercase font-bold"
                     >
                       DELETE
                     </button>
@@ -1174,19 +1411,19 @@ export const Admin: React.FC = () => {
           </div>
         )}
 
-        {/* ---------------- SECTOR 03: STORE PRODUCTS ---------------- */}
+        {/* ---------------- SECTOR 03: STORE PRODUCTS & PRICE SETTING ---------------- */}
         {activeSector === 'store' && (
           <div className="relative z-10 space-y-8">
-            <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
-              <h2 className="text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-[#00FF66]" /> ARMORY MERCHANDISE & REQUISITIONS // 兵站管理
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b-2 border-zinc-800">
+              <h2 className="text-lg sm:text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-[#00FF66]" /> ARMORY MERCHANDISE &amp; PRICE LISTING // 兵站・価格管理
               </h2>
               <span className="text-xs font-mono text-[#00FF66] font-bold">{products.length} CATALOG ITEMS</span>
             </div>
 
-            {/* Inline Product Edit Panel (Active when editing a product) */}
+            {/* Inline Product Edit Panel */}
             {editingProduct && (
-              <form onSubmit={handleSaveEditProduct} className="p-6 bg-zinc-950 border-2 border-[#00FF66] space-y-4 max-w-3xl font-mono text-xs shadow-[4px_4px_0_#ffffff] animate-fadeIn">
+              <form onSubmit={handleSaveEditProduct} className="p-4 sm:p-6 bg-zinc-950 border-2 border-[#00FF66] space-y-4 max-w-3xl font-mono text-xs shadow-[4px_4px_0_#ffffff]">
                 <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                   <span className="text-xs font-game font-black text-[#00FF66] uppercase flex items-center gap-2">
                     <Edit3 className="w-4 h-4" /> 【 編集 】 EDIT PRODUCT: {editingProduct.name}
@@ -1213,14 +1450,14 @@ export const Admin: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-zinc-400 mb-1">PRICE (USD) *</label>
+                    <label className="block text-[#00FF66] font-bold mb-1">PRICE (USD) *</label>
                     <input
                       required
                       type="number"
                       step="0.01"
                       value={editProductForm.price}
                       onChange={e => setEditProductForm({ ...editProductForm, price: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
+                      className="w-full bg-black border-2 border-[#00FF66] p-2.5 text-white font-bold outline-none"
                     />
                   </div>
 
@@ -1232,8 +1469,8 @@ export const Admin: React.FC = () => {
                       className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
                     >
                       <option value="Apparel">Apparel (戦闘服)</option>
-                      <option value="Music">Music (盤音 / Vinyl & CD)</option>
-                      <option value="Digital">Digital (電脳 / Stems & Patches)</option>
+                      <option value="Music">Music (盤音 / Vinyl &amp; CD)</option>
+                      <option value="Digital">Digital (電脳 / Stems &amp; Patches)</option>
                       <option value="Accessories">Accessories (装具)</option>
                     </select>
                   </div>
@@ -1248,7 +1485,7 @@ export const Admin: React.FC = () => {
                         onChange={e => setEditProductForm({ ...editProductForm, inStock: e.target.checked })}
                         className="accent-[#00FF66] w-4 h-4"
                       />
-                      <label htmlFor="editInStock" className="text-white">IN STOCK & AVAILABLE</label>
+                      <label htmlFor="editInStock" className="text-white">IN STOCK &amp; AVAILABLE</label>
                     </div>
                   </div>
 
@@ -1272,7 +1509,7 @@ export const Admin: React.FC = () => {
                     />
                   </div>
 
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="block text-zinc-400 mb-1">DIGITAL DOWNLOAD URL (OR USE FILE ABOVE)</label>
                     <input
                       type="text"
@@ -1312,9 +1549,9 @@ export const Admin: React.FC = () => {
             )}
 
             {/* Add Product Form */}
-            <form onSubmit={handleCreateProduct} className="p-5 bg-zinc-950 border border-zinc-800 space-y-4 max-w-3xl font-mono text-xs">
+            <form onSubmit={handleCreateProduct} className="p-4 sm:p-5 bg-zinc-950 border border-zinc-800 space-y-4 max-w-3xl font-mono text-xs">
               <span className="text-xs font-game font-black text-[#00FF66] block uppercase tracking-wider">
-                + EQUIP & REGISTER NEW PRODUCT
+                + EQUIP &amp; LIST NEW PRODUCT WITH PRICE
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1331,7 +1568,7 @@ export const Admin: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-zinc-400 mb-1">PRICE (USD) *</label>
+                  <label className="block text-[#00FF66] font-bold mb-1">PRICE (USD) *</label>
                   <input
                     required
                     type="number"
@@ -1339,7 +1576,7 @@ export const Admin: React.FC = () => {
                     placeholder="110.00"
                     value={newProduct.price || ''}
                     onChange={e => setNewProduct({ ...newProduct, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
+                    className="w-full bg-black border-2 border-[#00FF66] p-2.5 text-white font-bold outline-none"
                   />
                 </div>
 
@@ -1351,8 +1588,8 @@ export const Admin: React.FC = () => {
                     className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
                   >
                     <option value="Apparel">Apparel (戦闘服)</option>
-                    <option value="Music">Music (盤音 / Vinyl & CD)</option>
-                    <option value="Digital">Digital (電脳 / Stems & Patches)</option>
+                    <option value="Music">Music (盤音 / Vinyl &amp; CD)</option>
+                    <option value="Digital">Digital (電脳 / Stems &amp; Patches)</option>
                     <option value="Accessories">Accessories (装具)</option>
                   </select>
                 </div>
@@ -1388,17 +1625,6 @@ export const Admin: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-zinc-400 mb-1">DIGITAL DOWNLOAD URL (OR USE FILE ABOVE)</label>
-                  <input
-                    type="text"
-                    placeholder="https://... (unlocked upon checkout)"
-                    value={newProduct.downloadUrl}
-                    onChange={e => setNewProduct({ ...newProduct, downloadUrl: e.target.value })}
-                    className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
-                  />
-                </div>
-
                 <div className="sm:col-span-2">
                   <label className="block text-zinc-400 mb-1">DESCRIPTION</label>
                   <textarea
@@ -1420,22 +1646,49 @@ export const Admin: React.FC = () => {
               </button>
             </form>
 
-            {/* Existing Products List */}
+            {/* Existing Products List with Quick Inline Price Setter */}
             <div className="space-y-3 font-mono text-xs">
               <span className="text-xs font-game font-black text-white block uppercase">
-                ACTIVE STORE INVENTORY
+                ACTIVE STORE INVENTORY &amp; 1-CLICK PRICE SETTER
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {products.map(p => (
                   <div key={p.id} className="p-4 bg-black border-2 border-white hover:border-[#00FF66] transition-all flex flex-col justify-between shadow-[3px_3px_0_#000000]">
                     <div>
-                      <div className="aspect-square bg-zinc-900 border border-zinc-800 mb-3 overflow-hidden">
+                      <div className="aspect-square bg-zinc-900 border border-zinc-800 mb-3 overflow-hidden relative">
                         <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                        <span className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/90 border border-[#00FF66] text-[#00FF66] text-[10px] font-bold">
+                          {p.category}
+                        </span>
                       </div>
-                      <span className="text-[10px] text-[#00FF66] font-bold block">{p.category}</span>
                       <h4 className="font-game font-bold text-white text-sm truncate">{p.name}</h4>
                       <span className="text-[#00FF66] font-bold text-sm block mt-1">${p.price.toFixed(2)} USD</span>
+
+                      {/* Inline Quick Price Control */}
+                      <div className="mt-3 p-2 bg-zinc-950 border border-zinc-800 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-zinc-400 flex items-center gap-0.5">
+                          <DollarSign className="w-3 h-3 text-[#00FF66]" /> PRICE:
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={quickProductPrices[p.id] !== undefined ? quickProductPrices[p.id] : String(p.price)}
+                            onChange={e => setQuickProductPrices({ ...quickProductPrices, [p.id]: e.target.value })}
+                            className="w-20 bg-black border border-zinc-700 focus:border-[#00FF66] text-white px-2 py-1 text-xs font-bold outline-none"
+                            aria-label={`Set price for ${p.name}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleQuickProductPriceSave(p)}
+                            className="px-2.5 py-1 bg-[#00FF66] text-black hover:bg-white font-bold text-[10px] uppercase transition-colors"
+                          >
+                            SET
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="pt-3 mt-3 border-t border-zinc-800 flex items-center justify-between">
@@ -1444,7 +1697,7 @@ export const Admin: React.FC = () => {
                         className="text-zinc-300 hover:text-[#00FF66] text-xs font-bold flex items-center gap-1"
                       >
                         <Edit3 className="w-3 h-3" />
-                        <span>EDIT</span>
+                        <span>FULL EDIT</span>
                       </button>
                       <button
                         onClick={() => {
@@ -1464,12 +1717,141 @@ export const Admin: React.FC = () => {
           </div>
         )}
 
-        {/* ---------------- SECTOR 04: CUSTOMER ORDERS & REQUISITIONS ---------------- */}
+        {/* ---------------- SECTOR 04: PAYMENT API GATEWAYS ---------------- */}
+        {activeSector === 'gateways' && (
+          <div className="relative z-10 space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b-2 border-zinc-800">
+              <div>
+                <h2 className="text-lg sm:text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-[#00FF66]" /> PLUGGABLE PAYMENT API GATEWAYS // 決済API接続
+                </h2>
+                <p className="text-xs font-mono text-zinc-400 mt-1">
+                  Hook up Stripe, PayPal, M-Pesa Daraja, or any custom webhook payment gateway. Changes apply immediately to Checkout.
+                </p>
+              </div>
+              <span className="text-xs font-mono text-[#00FF66] font-bold">
+                {paymentGateways.filter(g => g.enabled).length} ACTIVE GATEWAYS
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-mono text-xs">
+              {paymentGateways.map(gw => {
+                const draft = gatewayDrafts[gw.id] || gw;
+                return (
+                  <div key={gw.id} className="p-5 bg-zinc-950 border-2 border-white hover:border-[#00FF66] transition-all space-y-4 shadow-[4px_4px_0_#000000]">
+                    <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                      <div>
+                        <span className="text-[10px] text-[#00FF66] font-bold uppercase block">GATEWAY ID: {gw.id.toUpperCase()}</span>
+                        <h3 className="text-base font-game font-black text-white uppercase">{draft.name}</h3>
+                      </div>
+
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={draft.enabled}
+                          onChange={e => setGatewayDrafts({
+                            ...gatewayDrafts,
+                            [gw.id]: { ...draft, enabled: e.target.checked }
+                          })}
+                          className="accent-[#00FF66] w-4 h-4"
+                        />
+                        <span className={draft.enabled ? 'text-[#00FF66] font-bold' : 'text-zinc-500'}>
+                          {draft.enabled ? 'ENABLED' : 'DISABLED'}
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-1">ENVIRONMENT</label>
+                        <select
+                          value={draft.mode}
+                          onChange={e => setGatewayDrafts({
+                            ...gatewayDrafts,
+                            [gw.id]: { ...draft, mode: e.target.value as 'sandbox' | 'live' }
+                          })}
+                          className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2 text-white outline-none uppercase"
+                        >
+                          <option value="sandbox">SANDBOX / TEST</option>
+                          <option value="live">LIVE PRODUCTION</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-1">SETTLEMENT CURRENCY</label>
+                        <input
+                          type="text"
+                          value={draft.currency}
+                          onChange={e => setGatewayDrafts({
+                            ...gatewayDrafts,
+                            [gw.id]: { ...draft, currency: e.target.value.toUpperCase() }
+                          })}
+                          className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2 text-white outline-none uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-zinc-400 mb-1">PUBLIC API KEY / MERCHANT / PAYBILL ID</label>
+                      <input
+                        type="text"
+                        value={draft.publicKeyOrMerchantId || ''}
+                        onChange={e => setGatewayDrafts({
+                          ...gatewayDrafts,
+                          [gw.id]: { ...draft, publicKeyOrMerchantId: e.target.value }
+                        })}
+                        placeholder="pk_live_... or client_id or paybill"
+                        className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2 text-white outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-zinc-400 mb-1">WEBHOOK / CALLBACK ENDPOINT URL</label>
+                      <input
+                        type="text"
+                        value={draft.webhookOrEndpointUrl || ''}
+                        onChange={e => setGatewayDrafts({
+                          ...gatewayDrafts,
+                          [gw.id]: { ...draft, webhookOrEndpointUrl: e.target.value }
+                        })}
+                        placeholder="/api/webhooks/..."
+                        className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2 text-white outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-zinc-400 mb-1">PROVIDER LABEL</label>
+                      <input
+                        type="text"
+                        value={draft.provider || ''}
+                        onChange={e => setGatewayDrafts({
+                          ...gatewayDrafts,
+                          [gw.id]: { ...draft, provider: e.target.value }
+                        })}
+                        className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2 text-white outline-none"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSaveGateway(gw.id)}
+                      className="w-full py-2.5 bg-[#00FF66] hover:bg-white text-black font-game font-black text-xs uppercase tracking-wider transition-all border-2 border-black shadow-[2px_2px_0_#ffffff]"
+                    >
+                      SAVE {gw.id.toUpperCase()} API CONFIG // 保存
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ---------------- SECTOR 05: CUSTOMER ORDERS & REQUISITIONS ---------------- */}
         {activeSector === 'orders' && (
           <div className="relative z-10 space-y-6">
             <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
               <h2 className="text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
-                <Package className="w-5 h-5 text-[#00FF66]" /> CUSTOMER ORDERS & REQUISITIONS // 注文記録
+                <Package className="w-5 h-5 text-[#00FF66]" /> CUSTOMER ORDERS &amp; REQUISITIONS // 注文記録
               </h2>
               <span className="text-xs font-mono text-[#00FF66] font-bold">{orders.length} TOTAL REQUISITIONS</span>
             </div>
@@ -1482,11 +1864,14 @@ export const Admin: React.FC = () => {
             ) : (
               <div className="space-y-4 font-mono text-xs">
                 {orders.map((order) => (
-                  <div key={order.id} className="p-5 bg-zinc-950 border-2 border-zinc-800 hover:border-[#00FF66] transition-colors">
+                  <div key={order.id} className="p-4 sm:p-5 bg-zinc-950 border-2 border-zinc-800 hover:border-[#00FF66] transition-colors">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-zinc-800">
                       <div>
                         <span className="text-[#00FF66] font-bold block text-sm">{order.id}</span>
                         <span className="text-zinc-400 text-[11px]">{new Date(order.createdAt).toLocaleString()}</span>
+                        {order.gatewayReference && (
+                          <span className="text-zinc-500 text-[10px] block">REF: {order.gatewayReference}</span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-3">
@@ -1517,7 +1902,7 @@ export const Admin: React.FC = () => {
                       </div>
 
                       <div>
-                        <span className="text-zinc-500 text-[10px] block">PAYMENT & LOGISTICS:</span>
+                        <span className="text-zinc-500 text-[10px] block">PAYMENT &amp; LOGISTICS:</span>
                         <span className="text-[#00FF66] font-bold block uppercase">{order.paymentMethod} &bull; ${order.total.toFixed(2)}</span>
                         <span className="text-zinc-400 block">Freight: ${order.shippingFee.toFixed(2)}</span>
                       </div>
@@ -1573,19 +1958,136 @@ export const Admin: React.FC = () => {
           </div>
         )}
 
-        {/* ---------------- SECTOR 05: TOUR DATES ---------------- */}
+        {/* ---------------- SECTOR 06: ENCRYPTED VAULT & USER REPOSITORIES ---------------- */}
+        {activeSector === 'vault' && (
+          <div className="relative z-10 space-y-6 font-mono text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b-2 border-zinc-800">
+              <div>
+                <h2 className="text-lg sm:text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
+                  <Database className="w-5 h-5 text-[#00FF66]" /> ENCRYPTED REPOSITORY VAULT // 暗号化データベース
+                </h2>
+                <p className="text-zinc-400 text-xs mt-1">
+                  All user accounts, emails, preferences, and order histories are encrypted at rest with AES-256-GCM. Only Admin can decrypt and inspect this repository.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  playSelectSound();
+                  fetchAdminVault();
+                  showNotification('Encrypted vault repository refreshed.');
+                }}
+                className="px-3 py-2 bg-[#00FF66] text-black font-game font-black text-xs uppercase flex items-center gap-1.5 border border-black shadow-[2px_2px_0_#ffffff]"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>REFRESH VAULT</span>
+              </button>
+            </div>
+
+            {/* Encryption Status Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-4 bg-zinc-950 border-2 border-[#00FF66]">
+                <span className="text-[10px] text-zinc-400 block">CIPHER ENGINE</span>
+                <span className="text-sm font-game font-black text-[#00FF66] flex items-center gap-1.5 mt-1">
+                  <Lock className="w-4 h-4" />
+                  {vaultSnapshot?.cipherAlgorithm || 'AES-256-GCM'} ({vaultSnapshot?.keyDerivation || 'scrypt'})
+                </span>
+              </div>
+              <div className="p-4 bg-zinc-950 border border-zinc-800">
+                <span className="text-[10px] text-zinc-400 block">REGISTERED OPERATIVES</span>
+                <span className="text-lg font-game font-black text-white mt-1 block">
+                  {vaultSnapshot?.users?.length || 1} ACCOUNTS
+                </span>
+              </div>
+              <div className="p-4 bg-zinc-950 border border-zinc-800">
+                <span className="text-[10px] text-zinc-400 block">ENCRYPTED RECORDS</span>
+                <span className="text-lg font-game font-black text-[#00FF66] mt-1 block">
+                  {(vaultSnapshot?.counts ? (vaultSnapshot.counts.users + vaultSnapshot.counts.orders + vaultSnapshot.counts.products + vaultSnapshot.counts.tracks) : (orders.length + products.length + tracks.length))} OBJECTS
+                </span>
+              </div>
+            </div>
+
+            {/* Decrypted User Accounts Repository */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-game font-black text-[#00FF66] uppercase flex items-center gap-2">
+                <Users className="w-4 h-4" /> DECRYPTED USER &amp; ADMIN ACCOUNTS REPOSITORY
+              </h3>
+
+              <div className="space-y-3">
+                {(vaultSnapshot?.users || []).map((u) => (
+                  <div key={u.id} className="p-4 bg-zinc-950 border border-zinc-800 hover:border-[#00FF66] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-game font-black text-white text-sm">{u.name}</span>
+                        <span className={`px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          u.role === 'admin' ? 'bg-[#00FF66] text-black' : 'bg-zinc-800 text-zinc-300'
+                        }`}>
+                          {u.role.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="text-zinc-400 text-xs">{u.email}</div>
+                      <div className="text-zinc-500 text-[10px]">
+                        Orders: {orders.filter(o => o.userId === u.id || o.customer?.email?.toLowerCase() === u.email.toLowerCase()).length} &bull; Saved Tracks: {u.preferences?.favoriteTrackIds?.length || 0} &bull; Preferred Gateway: {(u.preferences?.preferredPaymentMethod || 'card').toUpperCase()}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {u.email !== 'josephgitongaofficial@gmail.com' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const nextRole = u.role === 'admin' ? 'user' : 'admin';
+                            playEquipSound();
+                            await updateUserRole(u.id, nextRole);
+                            showNotification(`Updated ${u.email} role to ${nextRole.toUpperCase()}.`);
+                          }}
+                          className="px-3 py-1.5 bg-black border border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-black font-bold text-[10px] uppercase transition-colors"
+                        >
+                          {u.role === 'admin' ? 'DEMOTE TO USER' : 'PROMOTE TO ADMIN'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Security & Vault Audit Log */}
+            <div className="space-y-2 pt-2">
+              <h3 className="text-xs font-game font-black text-white uppercase">
+                SECURITY &amp; VAULT AUDIT LOG (LATEST EVENTS)
+              </h3>
+              <div className="max-h-60 overflow-y-auto border border-zinc-800 bg-zinc-950 divide-y divide-zinc-900">
+                {(vaultSnapshot?.auditLogs || []).slice(0, 20).map((entry) => (
+                  <div key={entry.id} className="p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+                    <div>
+                      <span className="text-[#00FF66] font-bold mr-2">[{entry.action}]</span>
+                      <span className="text-white">{entry.actorEmail}</span>
+                      <span className="text-zinc-400 ml-2">{entry.resource}</span>
+                    </div>
+                    <span className="text-zinc-500 text-[10px] shrink-0">
+                      {new Date(entry.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------- SECTOR 05 (TAB 03): WORLD TOUR DATES (+ PASS PRICING) ---------------- */}
         {activeSector === 'tour' && (
           <div className="relative z-10 space-y-8">
-            <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
-              <h2 className="text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-[#00FF66]" /> LIVE TOUR CONSOLE // 遠征管理
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b-2 border-zinc-800">
+              <h2 className="text-lg sm:text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-[#00FF66]" /> WORLD TOUR &amp; PASS PRICING // 遠征・チケット価格
               </h2>
               <span className="text-xs font-mono text-[#00FF66] font-bold">{tourDates.length} SCHEDULED DATES</span>
             </div>
 
-            {/* Inline Tour Edit Panel (Active when editing a tour date) */}
+            {/* Inline Tour Edit Panel */}
             {editingTour && (
-              <form onSubmit={handleSaveEditTour} className="p-6 bg-zinc-950 border-2 border-[#00FF66] space-y-4 max-w-3xl font-mono text-xs shadow-[4px_4px_0_#ffffff] animate-fadeIn">
+              <form onSubmit={handleSaveEditTour} className="p-4 sm:p-6 bg-zinc-950 border-2 border-[#00FF66] space-y-4 max-w-3xl font-mono text-xs shadow-[4px_4px_0_#ffffff]">
                 <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                   <span className="text-xs font-game font-black text-[#00FF66] uppercase flex items-center gap-2">
                     <Edit3 className="w-4 h-4" /> 【 編集 】 EDIT TOUR STOP: {editingTour.city}
@@ -1608,6 +2110,19 @@ export const Admin: React.FC = () => {
                       value={editTourForm.date}
                       onChange={e => setEditTourForm({ ...editTourForm, date: e.target.value })}
                       className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[#00FF66] font-bold mb-1">TOUR PASS PRICE (USD) *</label>
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editTourForm.price}
+                      onChange={e => setEditTourForm({ ...editTourForm, price: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-black border-2 border-[#00FF66] p-2.5 text-white font-bold outline-none"
                     />
                   </div>
 
@@ -1662,17 +2177,6 @@ export const Admin: React.FC = () => {
                       onChange={e => e.target.files && setEditTourPosterFile(e.target.files[0])}
                       className="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:border-2 file:border-white file:bg-zinc-800 file:text-white file:font-mono file:font-bold file:text-xs file:cursor-pointer"
                     />
-                    {editTourPosterFile && (
-                      <span className="text-[#00FF66] text-[10px] block mt-1">
-                        SELECTED: {editTourPosterFile.name} (Will upload on save)
-                      </span>
-                    )}
-                    {editTourForm.posterUrl && !editTourPosterFile && (
-                      <div className="flex items-center gap-2 mt-2">
-                        <img src={editTourForm.posterUrl} alt="Poster" className="w-12 h-14 object-cover border border-zinc-700" />
-                        <span className="text-zinc-500 text-[10px]">Active Poster / Flyer Loaded</span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="flex items-center gap-3 pt-6">
@@ -1706,9 +2210,9 @@ export const Admin: React.FC = () => {
             )}
 
             {/* Add Tour Form */}
-            <form onSubmit={handleCreateTour} className="p-5 bg-zinc-950 border border-zinc-800 space-y-4 max-w-3xl font-mono text-xs">
+            <form onSubmit={handleCreateTour} className="p-4 sm:p-5 bg-zinc-950 border border-zinc-800 space-y-4 max-w-3xl font-mono text-xs">
               <span className="text-xs font-game font-black text-[#00FF66] block uppercase tracking-wider">
-                + LOG NEW WORLD TOUR STOP
+                + LOG NEW WORLD TOUR STOP &amp; PASS PRICE
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1720,6 +2224,19 @@ export const Admin: React.FC = () => {
                     value={newTour.date}
                     onChange={e => setNewTour({ ...newTour, date: e.target.value })}
                     className="w-full bg-black border border-zinc-700 focus:border-[#00FF66] p-2.5 text-white outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[#00FF66] font-bold mb-1">TOUR PASS PRICE (USD) *</label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newTour.price}
+                    onChange={e => setNewTour({ ...newTour, price: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-black border-2 border-[#00FF66] p-2.5 text-white font-bold outline-none"
                   />
                 </div>
 
@@ -1778,11 +2295,6 @@ export const Admin: React.FC = () => {
                     onChange={e => e.target.files && setTourPosterFile(e.target.files[0])}
                     className="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:border-2 file:border-white file:bg-zinc-800 file:text-white file:font-mono file:font-bold file:text-xs file:cursor-pointer"
                   />
-                  {tourPosterFile && (
-                    <span className="text-[#00FF66] text-[10px] block mt-1">
-                      SELECTED: {tourPosterFile.name}
-                    </span>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-3 pt-2">
@@ -1806,40 +2318,53 @@ export const Admin: React.FC = () => {
               </button>
             </form>
 
-            {/* Existing Tour List */}
+            {/* Existing Tour List with Quick Price Setter */}
             <div className="space-y-3 font-mono text-xs">
               <span className="text-xs font-game font-black text-white block uppercase">
-                SCHEDULED WORLD EXPEDITION
+                SCHEDULED WORLD EXPEDITION &amp; PASS PRICING
               </span>
 
               {tourDates.map((t, idx) => (
-                <div key={t.id} className="p-4 bg-black border border-zinc-800 flex items-center justify-between gap-4 hover:border-[#00FF66] transition-colors">
+                <div key={t.id} className="p-3 sm:p-4 bg-black border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#00FF66] transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
-                    {t.posterUrl ? (
-                      <a href={t.posterUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 w-10 h-10 border border-zinc-700 hover:border-[#00FF66] overflow-hidden" title="View tour flyer / poster">
-                        <img src={t.posterUrl} alt={t.city} className="w-full h-full object-cover" />
-                      </a>
-                    ) : (
-                      <div className="shrink-0 w-10 h-10 border border-zinc-800 bg-zinc-900 flex items-center justify-center text-zinc-600">
-                        <MapPin className="w-4 h-4" />
-                      </div>
-                    )}
+                    <div className="shrink-0 w-10 h-10 border border-zinc-800 bg-zinc-900 flex items-center justify-center text-[#00FF66] font-bold">
+                      0{idx + 1}
+                    </div>
                     <div className="min-w-0">
                       <div>
-                        <span className="text-[#00FF66] font-bold mr-2">0{idx + 1}</span>
                         <span className="font-game font-black text-white text-base mr-3">{t.city}, {t.country}</span>
                         {t.isSoldOut && <span className="px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-bold">SOLD OUT</span>}
                       </div>
                       <div className="text-zinc-400 text-xs">
-                        {t.venue} &bull; {new Date(t.date).toLocaleDateString()}
+                        {t.venue} &bull; {new Date(t.date).toLocaleDateString()} &bull; <strong className="text-[#00FF66]">${(t.price ?? 45).toFixed(2)} USD</strong>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {/* Inline Quick Pass Price Setter */}
+                    <div className="flex items-center border border-zinc-700 bg-zinc-950">
+                      <span className="px-2 text-[10px] text-[#00FF66] font-bold">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={quickTourPrices[t.id] !== undefined ? quickTourPrices[t.id] : String(t.price ?? 45)}
+                        onChange={e => setQuickTourPrices({ ...quickTourPrices, [t.id]: e.target.value })}
+                        className="w-16 bg-black text-white px-1.5 py-1 text-xs outline-none border-x border-zinc-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleQuickTourPriceSave(t)}
+                        className="px-2 py-1 bg-[#00FF66] text-black hover:bg-white font-bold text-[10px] uppercase transition-colors"
+                      >
+                        SET PRICE
+                      </button>
+                    </div>
+
                     <button
                       onClick={() => handleStartEditTour(t)}
-                      className="text-zinc-300 hover:text-[#00FF66] text-xs font-bold flex items-center gap-1"
+                      className="text-zinc-300 hover:text-[#00FF66] text-xs font-bold flex items-center gap-1 px-2 py-1 border border-zinc-700"
                     >
                       <Edit3 className="w-3 h-3" />
                       <span>EDIT</span>
@@ -1850,7 +2375,7 @@ export const Admin: React.FC = () => {
                         deleteTourDate(t.id);
                         showNotification(`Tour date for ${t.city} deleted.`);
                       }}
-                      className="text-red-400 hover:text-white text-xs font-bold"
+                      className="text-red-400 hover:text-white text-xs font-bold px-2 py-1 border border-red-900"
                     >
                       DELETE
                     </button>
@@ -1861,19 +2386,18 @@ export const Admin: React.FC = () => {
           </div>
         )}
 
-        {/* ---------------- SECTOR 06: INTEL / BLOG ---------------- */}
+        {/* ---------------- SECTOR 08: INTEL / BLOG ---------------- */}
         {activeSector === 'intel' && (
           <div className="relative z-10 space-y-8">
             <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
               <h2 className="text-xl font-game font-black uppercase text-white tracking-wider flex items-center gap-2">
-                <FileText className="w-5 h-5 text-[#00FF66]" /> STUDIO INTEL & DISPATCHES // 記録管理
+                <FileText className="w-5 h-5 text-[#00FF66]" /> STUDIO INTEL &amp; DISPATCHES // 記録管理
               </h2>
               <span className="text-xs font-mono text-[#00FF66] font-bold">{blogPosts.length} POSTED LOGS</span>
             </div>
 
-            {/* Inline Blog Edit Panel (Active when editing a blog post) */}
             {editingBlog && (
-              <form onSubmit={handleSaveEditBlog} className="p-6 bg-zinc-950 border-2 border-[#00FF66] space-y-4 max-w-3xl font-mono text-xs shadow-[4px_4px_0_#ffffff] animate-fadeIn">
+              <form onSubmit={handleSaveEditBlog} className="p-6 bg-zinc-950 border-2 border-[#00FF66] space-y-4 max-w-3xl font-mono text-xs shadow-[4px_4px_0_#ffffff]">
                 <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                   <span className="text-xs font-game font-black text-[#00FF66] uppercase flex items-center gap-2">
                     <Edit3 className="w-4 h-4" /> 【 編集 】 EDIT INTEL LOG: {editingBlog.title}
@@ -1917,39 +2441,6 @@ export const Admin: React.FC = () => {
                       onChange={e => e.target.files && setEditBlogImageFile(e.target.files[0])}
                       className="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:border-2 file:border-white file:bg-zinc-800 file:text-white file:font-mono file:font-bold file:text-xs file:cursor-pointer"
                     />
-                    {editBlogImageFile && (
-                      <span className="text-[#00FF66] text-[10px] block mt-1">
-                        SELECTED IMAGE: {editBlogImageFile.name} (Will replace on save)
-                      </span>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-zinc-400 mb-1">ATTACH INTEL DOSSIER / DOCUMENT / AUDIO FILE (.PDF, .ZIP, .MP3, .TXT)</label>
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx,.txt,.zip,.mp3,.wav,image/*"
-                      onChange={e => e.target.files && setEditBlogAttachmentFile(e.target.files[0])}
-                      className="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:border-2 file:border-white file:bg-[#00FF66] file:text-black file:font-mono file:font-bold file:text-xs file:cursor-pointer"
-                    />
-                    {editBlogAttachmentFile && (
-                      <span className="text-[#00FF66] text-[10px] block mt-1">
-                        SELECTED ATTACHMENT: {editBlogAttachmentFile.name} (Ready on save)
-                      </span>
-                    )}
-                    {editBlogForm.attachmentUrl && !editBlogAttachmentFile && (
-                      <div className="flex items-center gap-2 mt-2">
-                        <a
-                          href={editBlogForm.attachmentUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-2 py-1 bg-black border border-[#00FF66] text-[#00FF66] text-[10px] font-bold flex items-center gap-1"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>CURRENT ATTACHED DOSSIER ACTIVE</span>
-                        </a>
-                      </div>
-                    )}
                   </div>
 
                   <div>
@@ -1981,7 +2472,6 @@ export const Admin: React.FC = () => {
               </form>
             )}
 
-            {/* Add Blog Form */}
             <form onSubmit={handleCreateBlog} className="p-5 bg-zinc-950 border border-zinc-800 space-y-4 max-w-3xl font-mono text-xs">
               <span className="text-xs font-game font-black text-[#00FF66] block uppercase tracking-wider">
                 + PUBLISH NEW FIELD INTEL LOG
@@ -2023,36 +2513,6 @@ export const Admin: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-zinc-400 mb-1">COVER ART FILE</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={e => e.target.files && setBlogImageFile(e.target.files[0])}
-                    className="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:border-2 file:border-white file:bg-zinc-800 file:text-white file:font-mono file:font-bold file:text-xs file:cursor-pointer"
-                  />
-                  {blogImageFile && (
-                    <span className="text-[#00FF66] text-[10px] block mt-1">
-                      SELECTED: {blogImageFile.name}
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-zinc-400 mb-1">ATTACH INTEL DOSSIER / DOCUMENT FILE (.PDF, .ZIP, .MP3, .TXT)</label>
-                  <input
-                    type="file"
-                    accept=".pdf,.doc,.docx,.txt,.zip,.mp3,.wav,image/*"
-                    onChange={e => e.target.files && setBlogAttachmentFile(e.target.files[0])}
-                    className="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:border-2 file:border-white file:bg-[#00FF66] file:text-black file:font-mono file:font-bold file:text-xs file:cursor-pointer"
-                  />
-                  {blogAttachmentFile && (
-                    <span className="text-[#00FF66] text-[10px] block mt-1">
-                      SELECTED DOSSIER: {blogAttachmentFile.name}
-                    </span>
-                  )}
-                </div>
-
-                <div>
                   <label className="block text-zinc-400 mb-1">CHRONICLE CONTENT</label>
                   <textarea
                     rows={4}
@@ -2073,7 +2533,6 @@ export const Admin: React.FC = () => {
               </button>
             </form>
 
-            {/* Existing Blog List */}
             <div className="space-y-3 font-mono text-xs">
               <span className="text-xs font-game font-black text-white block uppercase">
                 DISPATCHED ARCHIVES
@@ -2088,20 +2547,7 @@ export const Admin: React.FC = () => {
                     </div>
                     <div className="min-w-0">
                       <h4 className="font-game font-bold text-white text-sm truncate">{b.title}</h4>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-zinc-500 text-[10px]">{new Date(b.date).toLocaleDateString()}</span>
-                        {b.attachmentUrl && (
-                          <a
-                            href={b.attachmentUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-1.5 py-0.5 bg-black border border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-black transition-colors text-[9px] font-bold flex items-center gap-1"
-                          >
-                            <Download className="w-2.5 h-2.5" />
-                            <span>DOSSIER ATTACHED</span>
-                          </a>
-                        )}
-                      </div>
+                      <span className="text-zinc-500 text-[10px]">{new Date(b.date).toLocaleDateString()}</span>
                     </div>
                   </div>
 
@@ -2130,7 +2576,7 @@ export const Admin: React.FC = () => {
           </div>
         )}
 
-        {/* ---------------- SECTOR 07: COMMS / INBOX ---------------- */}
+        {/* ---------------- SECTOR 09: COMMS / INBOX ---------------- */}
         {activeSector === 'comms' && (
           <div className="relative z-10 space-y-6">
             <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
@@ -2181,7 +2627,6 @@ export const Admin: React.FC = () => {
                       </p>
                     </div>
 
-                    {/* File Attachment Upload & View in Transmission Inbox */}
                     <div className="mt-3 pt-3 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <label className="text-[10px] font-mono font-bold text-zinc-400 uppercase">

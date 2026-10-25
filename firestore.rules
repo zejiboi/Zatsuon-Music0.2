@@ -1,48 +1,289 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Admin helper function
-    function isAdmin() {
-      return request.auth != null && request.auth.token.email == 'josephgitongaofficial@gmail.com';
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: tracks/{trackId}
+    // Fields:
+    //   - id: string (required, matches trackId)
+    //   - title: string (required, 1..200 chars)
+    //   - album: string (required, 1..200 chars)
+    //   - coverUrl: string (required, <= 2048 chars)
+    //   - audioUrl: string (required, <= 2048 chars)
+    //   - duration: string (required, <= 32 chars)
+    //   - price: number (optional, >= 0)
+    //
+    // Collection: merchandise/{productId}
+    // Fields:
+    //   - id: string (required, matches productId)
+    //   - name: string (required, 1..200 chars)
+    //   - price: number (required, >= 0)
+    //   - image: string (required, <= 2048 chars)
+    //   - category: string (required, 1..64 chars)
+    //   - description: string (required, <= 5000 chars)
+    //   - inStock: bool (optional)
+    //   - downloadUrl: string (optional, <= 2048 chars)
+    //
+    // Collection: tour_dates/{tourId}
+    // Fields:
+    //   - id: string (required, matches tourId)
+    //   - date: string (required, <= 64 chars)
+    //   - venue: string (required, 1..200 chars)
+    //   - city: string (required, 1..120 chars)
+    //   - country: string (required, 1..120 chars)
+    //   - ticketUrl: string (required, <= 2048 chars)
+    //   - isSoldOut: bool (required)
+    //   - posterUrl: string (optional, <= 2048 chars)
+    //   - price: number (optional, >= 0)
+    //
+    // Collection: blog_posts/{postId}
+    // Fields:
+    //   - id: string (required, matches postId)
+    //   - title: string (required, 1..240 chars)
+    //   - excerpt: string (required, <= 1000 chars)
+    //   - content: string (required, <= 50000 chars)
+    //   - date: string (required, <= 64 chars)
+    //   - imageUrl: string (required, <= 2048 chars)
+    //   - attachmentUrl: string (optional, <= 2048 chars)
+    //
+    // Collection: home_content/{docId}
+    // Fields:
+    //   - albumTitle: string (required, 1..200 chars)
+    //   - albumSubtitle: string (required, 1..300 chars)
+    //   - heroImageUrl: string (required, <= 2048 chars)
+    //   - featuredTrackId: string (optional, <= 100 chars)
+    //   - bannerTag: string (optional, <= 200 chars)
+    //
+    // Collection: orders/{orderId}
+    // Fields:
+    //   - id: string (required, immutable, matches orderId, 1..100 chars)
+    //   - userId: string (optional, <= 128 chars)
+    //   - createdAt: string (required, immutable, 1..64 chars)
+    //   - customer: map (required: name, email, address, city, country, postalCode; optional: phone)
+    //   - items: list (required, 1..50 items)
+    //   - subtotal: number (optional, >= 0)
+    //   - shippingFee: number (optional, >= 0)
+    //   - total: number (required, >= 0)
+    //   - paymentMethod: string (required, enum: ['card', 'paypal', 'mpesa', 'paystack'])
+    //   - gatewayReference: string (optional, <= 200 chars)
+    //   - status: string (required, enum: ['processing', 'dispatched', 'delivered'])
+    //   - receiptUrl: string (optional, <= 2048 chars)
+    //
+    // Collection: contact_messages/{messageId}
+    // Fields:
+    //   - id: string (required, immutable, matches messageId, 1..100 chars)
+    //   - createdAt: string (required, immutable, 1..64 chars)
+    //   - name: string (required, 1..140 chars)
+    //   - email: string (required, valid email, <= 254 chars)
+    //   - subject: string (required, 1..200 chars)
+    //   - message: string (required, 1..5000 chars)
+    //   - status: string (required, enum: ['unread', 'read', 'replied'])
+    //   - attachmentUrl: string (optional, <= 2048 chars)
+    //
+    // Collection: users/{userId}
+    // Fields:
+    //   - id: string (optional/required, immutable, matches userId)
+    //   - name: string (required, 1..140 chars)
+    //   - email: string (required, valid email, <= 254 chars)
+    //   - role: string (optional, 'user' for self-service; 'admin' only via isAdmin())
+    //   - createdAt: string (optional, immutable, <= 64 chars)
+    //   - lastLoginAt: string (optional, <= 64 chars)
+    //   - preferences: map (optional)
+    //   - savedCart: list (optional, <= 50 items)
+    //   - purchasedTrackIds: list (optional, <= 500 items)
+    //   - encryptionBadge: string (optional, <= 120 chars)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
     }
 
-    // Public catalog content (Read by all, editable by admin only)
-    match /tracks/{document=**} {
-      allow read: if true;
-      allow write: if isAdmin();
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
-    match /merchandise/{document=**} {
-      allow read: if true;
-      allow write: if isAdmin();
+
+    function isAdmin() {
+      return request.auth != null &&
+        request.auth.token.email == 'josephgitongaofficial@gmail.com' &&
+        request.auth.token.email_verified == true;
     }
-    match /tour_dates/{document=**} {
-      allow read: if true;
-      allow write: if isAdmin();
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
     }
-    match /blog_posts/{document=**} {
-      allow read: if true;
-      allow write: if isAdmin();
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
     }
-    match /home_content/{document=**} {
-      allow read: if true;
-      allow write: if isAdmin();
+
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() >= 3 &&
+        email.size() <= 254 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidList(list, maxSize) {
+      return list is list && list.size() <= maxSize;
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidCustomerMap(customer) {
+      return customer is map &&
+        customer.keys().hasAll(['name', 'email', 'address', 'city', 'country', 'postalCode']) &&
+        customer.keys().hasOnly(['name', 'email', 'address', 'city', 'country', 'postalCode', 'phone']) &&
+        customer.name is string && customer.name.size() > 0 && customer.name.size() <= 140 &&
+        isValidEmail(customer.email) &&
+        customer.address is string && customer.address.size() > 0 && customer.address.size() <= 300 &&
+        customer.city is string && customer.city.size() > 0 && customer.city.size() <= 120 &&
+        customer.country is string && customer.country.size() > 0 && customer.country.size() <= 120 &&
+        customer.postalCode is string && customer.postalCode.size() > 0 && customer.postalCode.size() <= 40 &&
+        (!('phone' in customer) || (customer.phone is string && customer.phone.size() <= 40));
+    }
+
+    function isValidOrder(data, orderId) {
+      return hasRequiredFields(['id', 'createdAt', 'customer', 'items', 'total', 'paymentMethod', 'status']) &&
+        hasOnlyAllowedFields([
+          'id', 'userId', 'createdAt', 'customer', 'items',
+          'subtotal', 'shippingFee', 'total', 'paymentMethod',
+          'gatewayReference', 'status', 'receiptUrl'
+        ]) &&
+        data.id is string && data.id == orderId && data.id.size() > 0 && data.id.size() <= 100 &&
+        validStringLength('createdAt', 1, 64) &&
+        isValidCustomerMap(data.customer) &&
+        data.items is list && data.items.size() > 0 && data.items.size() <= 50 &&
+        data.total is number && data.total >= 0 && data.total <= 1000000 &&
+        (!('subtotal' in data) || (data.subtotal is number && data.subtotal >= 0 && data.subtotal <= 1000000)) &&
+        (!('shippingFee' in data) || (data.shippingFee is number && data.shippingFee >= 0 && data.shippingFee <= 100000)) &&
+        data.paymentMethod in ['card', 'paypal', 'mpesa', 'paystack'] &&
+        data.status in ['processing', 'dispatched', 'delivered'] &&
+        isValidOptionalString('userId', 1, 128) &&
+        isValidOptionalString('gatewayReference', 0, 200) &&
+        isValidOptionalString('receiptUrl', 0, 2048);
+    }
+
+    function isValidContactMessage(data, messageId) {
+      return hasRequiredFields(['id', 'createdAt', 'name', 'email', 'subject', 'message', 'status']) &&
+        hasOnlyAllowedFields(['id', 'createdAt', 'name', 'email', 'subject', 'message', 'status', 'attachmentUrl']) &&
+        data.id is string && data.id == messageId && data.id.size() > 0 && data.id.size() <= 100 &&
+        validStringLength('createdAt', 1, 64) &&
+        validStringLength('name', 1, 140) &&
+        isValidEmail(data.email) &&
+        validStringLength('subject', 1, 200) &&
+        validStringLength('message', 1, 5000) &&
+        data.status in ['unread', 'read', 'replied'] &&
+        isValidOptionalString('attachmentUrl', 0, 2048);
+    }
+
+    function isValidUser(data, userId) {
+      return hasOnlyAllowedFields([
+          'id', 'uid', 'name', 'email', 'role', 'createdAt',
+          'lastLoginAt', 'preferences', 'savedCart', 'purchasedTrackIds', 'encryptionBadge'
+        ]) &&
+        (!('id' in data) || (data.id is string && data.id == userId)) &&
+        (!('uid' in data) || (data.uid is string && data.uid == userId)) &&
+        isValidOptionalString('name', 1, 140) &&
+        (!('email' in data) || isValidEmail(data.email)) &&
+        (!('role' in data) || data.role in ['user', 'admin']) &&
+        isValidOptionalString('createdAt', 1, 64) &&
+        isValidOptionalString('lastLoginAt', 1, 64) &&
+        (!('preferences' in data) || data.preferences is map) &&
+        (!('savedCart' in data) || isValidList(data.savedCart, 50)) &&
+        (!('purchasedTrackIds' in data) || isValidList(data.purchasedTrackIds, 500)) &&
+        isValidOptionalString('encryptionBadge', 0, 120);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Public catalog content (Read by all, writable by verified admin only)
+    match /tracks/{trackId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /merchandise/{productId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /tour_dates/{tourId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /blog_posts/{postId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /home_content/{docId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // Customer orders & armory checkout manifests
     match /orders/{orderId} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
+      allow create: if isValidOrder(request.resource.data, orderId);
+      allow get, list, update, delete: if isAdmin();
     }
 
     // Contact messages & transmissions
     match /contact_messages/{messageId} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
+      allow create: if isValidContactMessage(request.resource.data, messageId);
+      allow get, list, update, delete: if isAdmin();
     }
 
-    // User profile data
+    // User profile data (PII protected: owner-only get/write with anti-escalation, admin full access)
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if (
+        isOwner(userId) &&
+        isValidUser(request.resource.data, userId) &&
+        (!('role' in request.resource.data) || request.resource.data.role == 'user')
+      ) || isAdmin();
+      allow update: if (
+        isOwner(userId) &&
+        isValidUser(request.resource.data, userId) &&
+        areImmutableFieldsUnchanged(['id', 'uid', 'createdAt']) &&
+        (!('role' in request.resource.data) || (
+          request.resource.data.role == 'user' &&
+          (!('role' in resource.data) || request.resource.data.role == resource.data.role)
+        ))
+      ) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Default deny for all other paths
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

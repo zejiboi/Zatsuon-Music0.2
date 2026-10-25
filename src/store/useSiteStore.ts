@@ -1,7 +1,29 @@
 import { create } from 'zustand';
 import { get, set } from 'idb-keyval';
-import { Track, Product, TourDate, BlogPost, Album, HomeContent, Order, ContactMessage } from '../types';
-import { SEED_TRACKS, SEED_ALBUMS, SEED_PRODUCTS, SEED_TOUR_DATES, SEED_BLOG_POSTS } from './seedData';
+import {
+  Track,
+  Product,
+  TourDate,
+  BlogPost,
+  Album,
+  HomeContent,
+  Order,
+  ContactMessage,
+  UserAccount,
+  UserPreferences,
+  PaymentGatewayConfig,
+  PaymentMethodId,
+  AdminVaultSnapshot,
+  CartItem
+} from '../types';
+import {
+  SEED_TRACKS,
+  SEED_ALBUMS,
+  SEED_PRODUCTS,
+  SEED_TOUR_DATES,
+  SEED_BLOG_POSTS,
+  SEED_PAYMENT_GATEWAYS
+} from './seedData';
 import { auth, db, loginWithGoogle, logout as logoutFirebase } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, getDocs, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
@@ -39,12 +61,16 @@ interface SiteState {
   homeContent: HomeContent;
   orders: Order[];
   contactMessages: ContactMessage[];
+  paymentGateways: PaymentGatewayConfig[];
+  vaultSnapshot: AdminVaultSnapshot | null;
   isLoaded: boolean;
   isProductsLoading: boolean;
   isBlogLoading: boolean;
   user: User | null;
+  account: UserAccount | null;
+  authToken: string | null;
   isAuthLoaded: boolean;
-  
+
   // Home Content Actions
   updateHomeContent: (content: Partial<HomeContent>) => Promise<void>;
 
@@ -52,38 +78,66 @@ interface SiteState {
   addTrack: (track: TrackDB) => Promise<void>;
   updateTrack: (id: string, track: Partial<Track>) => Promise<void>;
   deleteTrack: (id: string) => Promise<void>;
-  
+
   // Albums Actions
   addAlbum: (album: Album) => Promise<void>;
   deleteAlbum: (id: string) => Promise<void>;
-  
+
   // Products Actions
   addProduct: (product: ProductDB) => Promise<void>;
   updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   fetchProducts: () => Promise<void>;
-  
+
   // Tour Actions
   addTourDate: (tourDate: TourDate) => Promise<void>;
   updateTourDate: (id: string, tourDate: Partial<TourDate>) => Promise<void>;
   deleteTourDate: (id: string) => Promise<void>;
-  
+
   // Blog Actions
   addBlogPost: (blogPost: BlogPostDB) => Promise<void>;
   updateBlogPost: (id: string, blogPost: Partial<BlogPost>) => Promise<void>;
   deleteBlogPost: (id: string) => Promise<void>;
   fetchBlogPosts: () => Promise<void>;
 
-  // E-commerce Orders
+  // E-commerce Orders & Payment Gateways
   createOrder: (order: Order) => Promise<void>;
+  submitServerCheckout: (payload: {
+    items: CartItem[];
+    customer: Order['customer'];
+    paymentMethod: PaymentMethodId;
+    shippingMethod: 'standard' | 'express';
+    discountCode?: string;
+  }) => Promise<Order>;
   updateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
   updateOrderReceipt: (orderId: string, receiptUrl: string) => Promise<void>;
+  updatePaymentGateway: (
+    id: PaymentMethodId,
+    updates: Partial<PaymentGatewayConfig>
+  ) => Promise<void>;
 
   // Contact Transmissions
   sendContactMessage: (msg: Omit<ContactMessage, 'id' | 'createdAt' | 'status'>) => Promise<void>;
   updateMessageStatus: (id: string, status: ContactMessage['status']) => Promise<void>;
   updateMessageAttachment: (id: string, attachmentUrl: string) => Promise<void>;
-  
+
+  // Account & Encrypted Vault Actions
+  registerAccount: (data: {
+    name: string;
+    email: string;
+    password: string;
+    adminInviteCode?: string;
+  }) => Promise<UserAccount>;
+  loginWithPassword: (email: string, password: string) => Promise<UserAccount>;
+  updatePreferences: (
+    prefs: Partial<UserPreferences>,
+    savedCart?: CartItem[],
+    newName?: string
+  ) => Promise<void>;
+  toggleFavoriteTrack: (trackId: string) => Promise<void>;
+  fetchAdminVault: () => Promise<void>;
+  updateUserRole: (userId: string, role: 'user' | 'admin') => Promise<void>;
+
   loadData: () => Promise<void>;
   initAuth: () => void;
   login: () => Promise<void>;
@@ -95,9 +149,17 @@ const createUrl = (file?: File | Blob | string) => {
   if (typeof file === 'string') return file;
   try {
     return URL.createObjectURL(file);
-  } catch (e) {
+  } catch {
     return '';
   }
+};
+
+const getAuthHeaders = (token: string | null): Record<string, string> => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
 };
 
 export const useSiteStore = create<SiteState>((setStore, getStore) => ({
@@ -109,10 +171,14 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
   homeContent: DEFAULT_HOME_CONTENT,
   orders: [],
   contactMessages: [],
+  paymentGateways: SEED_PAYMENT_GATEWAYS,
+  vaultSnapshot: null,
   isLoaded: false,
   isProductsLoading: true,
   isBlogLoading: true,
   user: null,
+  account: null,
+  authToken: typeof window !== 'undefined' ? localStorage.getItem('zeji_auth_token') : null,
   isAuthLoaded: false,
 
   updateHomeContent: async (content) => {
@@ -120,9 +186,18 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     setStore({ homeContent: updated });
     await set('home_content', updated);
     try {
+      await fetch('/api/admin/home', {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(updated)
+      });
+    } catch {
+      // fallback
+    }
+    try {
       await setDoc(doc(db, 'home_content', 'config'), updated, { merge: true });
-    } catch (e) {
-      console.warn('Firestore home_content sync error, using local persistence', e);
+    } catch {
+      // local persistence fallback
     }
   },
 
@@ -132,28 +207,61 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
       title: trackDb.title,
       album: trackDb.album,
       duration: trackDb.duration || '3:30',
-      coverUrl: trackDb.coverUrl || createUrl(trackDb.coverFile) || '/src/assets/images/manga_sound_panel_1792583212523.jpg',
-      audioUrl: trackDb.audioUrl || createUrl(trackDb.audioFile) || 'https://actions.google.com/sounds/v1/science_fiction/scifi_hum_loop.ogg'
+      price: trackDb.price !== undefined ? Number(trackDb.price) : 2.99,
+      coverUrl:
+        trackDb.coverUrl ||
+        createUrl(trackDb.coverFile) ||
+        '/src/assets/images/manga_sound_panel_1792583212523.jpg',
+      audioUrl:
+        trackDb.audioUrl ||
+        createUrl(trackDb.audioFile) ||
+        'https://actions.google.com/sounds/v1/science_fiction/scifi_hum_loop.ogg'
     };
-    
+
     const newTracks = [...getStore().tracks, track];
     setStore({ tracks: newTracks });
     await set('tracks', newTracks);
     try {
+      const res = await fetch('/api/admin/tracks', {
+        method: 'POST',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(track)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tracks) setStore({ tracks: data.tracks });
+      }
+    } catch {
+      // fallback
+    }
+    try {
       await setDoc(doc(db, 'tracks', track.id), track);
-    } catch (e) {
-      console.warn('Firestore track sync error', e);
+    } catch {
+      // fallback
     }
   },
 
   updateTrack: async (id, updatedFields) => {
-    const newTracks = getStore().tracks.map(t => t.id === id ? { ...t, ...updatedFields } : t);
+    const newTracks = getStore().tracks.map(t => (t.id === id ? { ...t, ...updatedFields } : t));
     setStore({ tracks: newTracks });
     await set('tracks', newTracks);
     try {
+      const res = await fetch(`/api/admin/tracks/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(updatedFields)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tracks) setStore({ tracks: data.tracks });
+      }
+    } catch {
+      // fallback
+    }
+    try {
       await updateDoc(doc(db, 'tracks', id), updatedFields);
-    } catch (e) {
-      console.warn('Firestore track update error', e);
+    } catch {
+      // fallback
     }
   },
 
@@ -162,9 +270,17 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     setStore({ tracks: newTracks });
     await set('tracks', newTracks);
     try {
+      await fetch(`/api/admin/tracks/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(getStore().authToken)
+      });
+    } catch {
+      // fallback
+    }
+    try {
       await deleteDoc(doc(db, 'tracks', id));
-    } catch (e) {
-      console.warn('Firestore track delete error', e);
+    } catch {
+      // fallback
     }
   },
 
@@ -183,32 +299,63 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     const product: Product = {
       id: productDb.id || `item-${Date.now()}`,
       name: productDb.name,
-      price: productDb.price,
+      price: Number(productDb.price) || 0,
       category: productDb.category,
       description: productDb.description,
-      image: productDb.image || createUrl(productDb.imageFile) || '/src/assets/images/manga_gear_panel_1792583224309.jpg',
+      image:
+        productDb.image ||
+        createUrl(productDb.imageFile) ||
+        '/src/assets/images/manga_gear_panel_1792583224309.jpg',
       inStock: productDb.inStock ?? true,
       downloadUrl: productDb.downloadUrl || ''
     };
-    
+
     const newProducts = [...getStore().products, product];
     setStore({ products: newProducts });
     await set('products', newProducts);
     try {
+      const res = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(product)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.products) setStore({ products: data.products });
+      }
+    } catch {
+      // fallback
+    }
+    try {
       await setDoc(doc(db, 'merchandise', product.id), product);
-    } catch (e) {
-      console.warn('Firestore product sync error', e);
+    } catch {
+      // fallback
     }
   },
 
   updateProduct: async (id, updatedFields) => {
-    const newProducts = getStore().products.map(p => p.id === id ? { ...p, ...updatedFields } : p);
+    const newProducts = getStore().products.map(p =>
+      p.id === id ? { ...p, ...updatedFields } : p
+    );
     setStore({ products: newProducts });
     await set('products', newProducts);
     try {
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(updatedFields)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.products) setStore({ products: data.products });
+      }
+    } catch {
+      // fallback
+    }
+    try {
       await updateDoc(doc(db, 'merchandise', id), updatedFields);
-    } catch (e) {
-      console.warn('Firestore product update error', e);
+    } catch {
+      // fallback
     }
   },
 
@@ -217,54 +364,100 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     setStore({ products: newProducts });
     await set('products', newProducts);
     try {
+      await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(getStore().authToken)
+      });
+    } catch {
+      // fallback
+    }
+    try {
       await deleteDoc(doc(db, 'merchandise', id));
-    } catch (e) {
-      console.warn('Firestore product delete error', e);
+    } catch {
+      // fallback
     }
   },
 
   fetchProducts: async () => {
     setStore({ isProductsLoading: true });
     try {
-      const snap = await getDocs(collection(db, 'merchandise'));
-      if (!snap.empty) {
-        const firestoreProducts = snap.docs.map(d => d.data() as Product);
-        setStore({ products: firestoreProducts });
-        await set('products', firestoreProducts);
+      const res = await fetch('/api/catalog');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.products) && data.products.length > 0) {
+          setStore({ products: data.products });
+          await set('products', data.products);
+        }
       }
-    } catch (e) {
-      console.warn('Firestore fetchProducts fallback:', e);
+    } catch {
+      // fallback to Firestore
+      try {
+        const snap = await getDocs(collection(db, 'merchandise'));
+        if (!snap.empty) {
+          const firestoreProducts = snap.docs.map(d => d.data() as Product);
+          setStore({ products: firestoreProducts });
+          await set('products', firestoreProducts);
+        }
+      } catch {
+        // ignore
+      }
     } finally {
-      // Ensure smooth, pleasant transition
       setTimeout(() => {
         setStore({ isProductsLoading: false });
-      }, 350);
+      }, 250);
     }
   },
 
   addTourDate: async (tourDate) => {
     const date: TourDate = {
       ...tourDate,
-      id: tourDate.id || `tour-${Date.now()}`
+      id: tourDate.id || `tour-${Date.now()}`,
+      price: tourDate.price ?? 55
     };
     const newDates = [...getStore().tourDates, date];
     setStore({ tourDates: newDates });
     await set('tourDates', newDates);
     try {
+      const res = await fetch('/api/admin/tour', {
+        method: 'POST',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(date)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tourDates) setStore({ tourDates: data.tourDates });
+      }
+    } catch {
+      // fallback
+    }
+    try {
       await setDoc(doc(db, 'tour_dates', date.id), date);
-    } catch (e) {
-      console.warn('Firestore tour sync error', e);
+    } catch {
+      // fallback
     }
   },
 
   updateTourDate: async (id, updatedFields) => {
-    const newDates = getStore().tourDates.map(t => t.id === id ? { ...t, ...updatedFields } : t);
+    const newDates = getStore().tourDates.map(t => (t.id === id ? { ...t, ...updatedFields } : t));
     setStore({ tourDates: newDates });
     await set('tourDates', newDates);
     try {
+      const res = await fetch(`/api/admin/tour/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(updatedFields)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tourDates) setStore({ tourDates: data.tourDates });
+      }
+    } catch {
+      // fallback
+    }
+    try {
       await updateDoc(doc(db, 'tour_dates', id), updatedFields);
-    } catch (e) {
-      console.warn('Firestore tour update error', e);
+    } catch {
+      // fallback
     }
   },
 
@@ -273,9 +466,17 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     setStore({ tourDates: newDates });
     await set('tourDates', newDates);
     try {
+      await fetch(`/api/admin/tour/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(getStore().authToken)
+      });
+    } catch {
+      // fallback
+    }
+    try {
       await deleteDoc(doc(db, 'tour_dates', id));
-    } catch (e) {
-      console.warn('Firestore tour delete error', e);
+    } catch {
+      // fallback
     }
   },
 
@@ -286,26 +487,56 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
       excerpt: blogPostDb.excerpt,
       content: blogPostDb.content,
       date: blogPostDb.date || new Date().toISOString(),
-      imageUrl: blogPostDb.imageUrl || createUrl(blogPostDb.imageFile) || '/src/assets/images/manga_tour_panel_1792583237044.jpg'
+      imageUrl:
+        blogPostDb.imageUrl ||
+        createUrl(blogPostDb.imageFile) ||
+        '/src/assets/images/manga_tour_panel_1792583237044.jpg',
+      attachmentUrl: blogPostDb.attachmentUrl
     };
-    const newPosts = [...getStore().blogPosts, post];
+    const newPosts = [post, ...getStore().blogPosts];
     setStore({ blogPosts: newPosts });
     await set('blogPosts', newPosts);
     try {
+      const res = await fetch('/api/admin/blog', {
+        method: 'POST',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(post)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.blogPosts) setStore({ blogPosts: data.blogPosts });
+      }
+    } catch {
+      // fallback
+    }
+    try {
       await setDoc(doc(db, 'blog_posts', post.id), post);
-    } catch (e) {
-      console.warn('Firestore blog sync error', e);
+    } catch {
+      // fallback
     }
   },
 
   updateBlogPost: async (id, updatedFields) => {
-    const newPosts = getStore().blogPosts.map(b => b.id === id ? { ...b, ...updatedFields } : b);
+    const newPosts = getStore().blogPosts.map(b => (b.id === id ? { ...b, ...updatedFields } : b));
     setStore({ blogPosts: newPosts });
     await set('blogPosts', newPosts);
     try {
+      const res = await fetch(`/api/admin/blog/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(updatedFields)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.blogPosts) setStore({ blogPosts: data.blogPosts });
+      }
+    } catch {
+      // fallback
+    }
+    try {
       await updateDoc(doc(db, 'blog_posts', id), updatedFields);
-    } catch (e) {
-      console.warn('Firestore blog update error', e);
+    } catch {
+      // fallback
     }
   },
 
@@ -314,27 +545,37 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     setStore({ blogPosts: newPosts });
     await set('blogPosts', newPosts);
     try {
+      await fetch(`/api/admin/blog/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(getStore().authToken)
+      });
+    } catch {
+      // fallback
+    }
+    try {
       await deleteDoc(doc(db, 'blog_posts', id));
-    } catch (e) {
-      console.warn('Firestore blog delete error', e);
+    } catch {
+      // fallback
     }
   },
 
   fetchBlogPosts: async () => {
     setStore({ isBlogLoading: true });
     try {
-      const snap = await getDocs(collection(db, 'blog_posts'));
-      if (!snap.empty) {
-        const firestoreBlog = snap.docs.map(d => d.data() as BlogPost);
-        setStore({ blogPosts: firestoreBlog });
-        await set('blogPosts', firestoreBlog);
+      const res = await fetch('/api/catalog');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.blogPosts) && data.blogPosts.length > 0) {
+          setStore({ blogPosts: data.blogPosts });
+          await set('blogPosts', data.blogPosts);
+        }
       }
-    } catch (e) {
-      console.warn('Firestore fetchBlogPosts fallback:', e);
+    } catch {
+      // fallback
     } finally {
       setTimeout(() => {
         setStore({ isBlogLoading: false });
-      }, 350);
+      }, 250);
     }
   },
 
@@ -344,34 +585,107 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     await set('orders', newOrders);
     try {
       await setDoc(doc(db, 'orders', order.id), order);
-    } catch (e) {
-      console.warn('Firestore order create error', e);
+    } catch {
+      // fallback
     }
   },
 
+  submitServerCheckout: async (payload) => {
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: getAuthHeaders(getStore().authToken),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Checkout settlement failed');
+    }
+    const createdOrder = data.order as Order;
+    const newOrders = [createdOrder, ...getStore().orders];
+    setStore({ orders: newOrders });
+    await set('orders', newOrders);
+    return createdOrder;
+  },
+
   updateOrderStatus: async (orderId, status) => {
-    const newOrders = getStore().orders.map(o => o.id === orderId ? { ...o, status } : o);
+    const newOrders = getStore().orders.map(o => (o.id === orderId ? { ...o, status } : o));
     setStore({ orders: newOrders });
     await set('orders', newOrders);
     try {
+      await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify({ status })
+      });
+    } catch {
+      // fallback
+    }
+    try {
       await updateDoc(doc(db, 'orders', orderId), { status });
-    } catch (e) {
-      console.warn('Firestore order status update error', e);
+    } catch {
+      // fallback
     }
   },
 
   updateOrderReceipt: async (orderId, receiptUrl) => {
-    const newOrders = getStore().orders.map(o => o.id === orderId ? { ...o, receiptUrl } : o);
+    const newOrders = getStore().orders.map(o => (o.id === orderId ? { ...o, receiptUrl } : o));
     setStore({ orders: newOrders });
     await set('orders', newOrders);
     try {
+      await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify({ receiptUrl })
+      });
+    } catch {
+      // fallback
+    }
+    try {
       await updateDoc(doc(db, 'orders', orderId), { receiptUrl });
-    } catch (e) {
-      console.warn('Firestore order receipt update error', e);
+    } catch {
+      // fallback
+    }
+  },
+
+  updatePaymentGateway: async (id, updates) => {
+    const updatedGateways = getStore().paymentGateways.map(g =>
+      g.id === id ? { ...g, ...updates } : g
+    );
+    setStore({ paymentGateways: updatedGateways });
+    try {
+      const res = await fetch(`/api/admin/gateways/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.paymentGateways) {
+          setStore({ paymentGateways: data.paymentGateways });
+        }
+      }
+    } catch {
+      // fallback
     }
   },
 
   sendContactMessage: async (msgData) => {
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgData)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newMessages = [data.message, ...getStore().contactMessages];
+        setStore({ contactMessages: newMessages });
+        await set('contact_messages', newMessages);
+        return;
+      }
+    } catch {
+      // fallback
+    }
     const message: ContactMessage = {
       ...msgData,
       id: `msg-${Date.now()}`,
@@ -381,37 +695,175 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     const newMessages = [message, ...getStore().contactMessages];
     setStore({ contactMessages: newMessages });
     await set('contact_messages', newMessages);
-    try {
-      await setDoc(doc(db, 'contact_messages', message.id), message);
-    } catch (e) {
-      console.warn('Firestore contact message send error', e);
-    }
   },
 
   updateMessageStatus: async (id, status) => {
-    const newMessages = getStore().contactMessages.map(m => m.id === id ? { ...m, status } : m);
+    const newMessages = getStore().contactMessages.map(m =>
+      m.id === id ? { ...m, status } : m
+    );
     setStore({ contactMessages: newMessages });
     await set('contact_messages', newMessages);
     try {
-      await updateDoc(doc(db, 'contact_messages', id), { status });
-    } catch (e) {
-      console.warn('Firestore contact status error', e);
+      await fetch(`/api/admin/messages/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify({ status })
+      });
+    } catch {
+      // fallback
     }
   },
 
   updateMessageAttachment: async (id, attachmentUrl) => {
-    const newMessages = getStore().contactMessages.map(m => m.id === id ? { ...m, attachmentUrl } : m);
+    const newMessages = getStore().contactMessages.map(m =>
+      m.id === id ? { ...m, attachmentUrl } : m
+    );
     setStore({ contactMessages: newMessages });
     await set('contact_messages', newMessages);
     try {
-      await updateDoc(doc(db, 'contact_messages', id), { attachmentUrl });
-    } catch (e) {
-      console.warn('Firestore contact attachment error', e);
+      await fetch(`/api/admin/messages/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify({ attachmentUrl })
+      });
+    } catch {
+      // fallback
+    }
+  },
+
+  // Account & Encrypted Vault Methods
+  registerAccount: async (payload) => {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Account registration failed');
+    }
+    if (data.token) {
+      localStorage.setItem('zeji_auth_token', data.token);
+    }
+    setStore({
+      account: data.user,
+      authToken: data.token,
+      orders: Array.isArray(data.orders) ? data.orders : getStore().orders
+    });
+    return data.user as UserAccount;
+  },
+
+  loginWithPassword: async (email, password) => {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Invalid login credentials');
+    }
+    if (data.token) {
+      localStorage.setItem('zeji_auth_token', data.token);
+    }
+    setStore({
+      account: data.user,
+      authToken: data.token,
+      orders: Array.isArray(data.orders) ? data.orders : getStore().orders
+    });
+    if (data.user.role === 'admin') {
+      getStore().fetchAdminVault();
+    }
+    return data.user as UserAccount;
+  },
+
+  updatePreferences: async (prefs, savedCart, newName) => {
+    const currentAccount = getStore().account;
+    if (!currentAccount) return;
+
+    const mergedPrefs: UserPreferences = {
+      ...currentAccount.preferences,
+      ...prefs
+    };
+
+    setStore({
+      account: {
+        ...currentAccount,
+        name: newName || currentAccount.name,
+        preferences: mergedPrefs,
+        savedCart: savedCart ?? currentAccount.savedCart
+      }
+    });
+
+    try {
+      const res = await fetch('/api/account/preferences', {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify({
+          preferences: mergedPrefs,
+          savedCart,
+          name: newName
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) setStore({ account: data.user });
+      }
+    } catch {
+      // local state preserved
+    }
+  },
+
+  toggleFavoriteTrack: async (trackId) => {
+    const currentAccount = getStore().account;
+    if (!currentAccount) return;
+    const currentFavs = currentAccount.preferences.favoriteTrackIds || [];
+    const exists = currentFavs.includes(trackId);
+    const updatedFavs = exists
+      ? currentFavs.filter(id => id !== trackId)
+      : [...currentFavs, trackId];
+    await getStore().updatePreferences({ favoriteTrackIds: updatedFavs });
+  },
+
+  fetchAdminVault: async () => {
+    try {
+      const res = await fetch('/api/admin/vault', {
+        headers: getAuthHeaders(getStore().authToken)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStore({
+          vaultSnapshot: data,
+          orders: Array.isArray(data.orders) ? data.orders : getStore().orders,
+          contactMessages: Array.isArray(data.contactMessages)
+            ? data.contactMessages
+            : getStore().contactMessages,
+          paymentGateways: Array.isArray(data.paymentGateways)
+            ? data.paymentGateways
+            : getStore().paymentGateways
+        });
+      }
+    } catch {
+      // ignore if not admin
+    }
+  },
+
+  updateUserRole: async (userId, role) => {
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/role`, {
+        method: 'PUT',
+        headers: getAuthHeaders(getStore().authToken),
+        body: JSON.stringify({ role })
+      });
+      if (res.ok) {
+        await getStore().fetchAdminVault();
+      }
+    } catch {
+      // ignore
     }
   },
 
   loadData: async () => {
-    // 1. Try local cache first for instant boot
     const localTracks = (await get('tracks')) || [];
     const localProducts = (await get('products')) || [];
     const localTourDates = (await get('tourDates')) || [];
@@ -432,63 +884,77 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
       isLoaded: true
     });
 
-    // 2. Try fetching live Firestore collections if available
     try {
-      const [tracksSnap, productsSnap, tourSnap, blogSnap, ordersSnap, msgSnap] = await Promise.allSettled([
-        getDocs(collection(db, 'tracks')),
-        getDocs(collection(db, 'merchandise')),
-        getDocs(collection(db, 'tour_dates')),
-        getDocs(collection(db, 'blog_posts')),
-        getDocs(collection(db, 'orders')),
-        getDocs(collection(db, 'contact_messages')),
-      ]);
-
-      if (tracksSnap.status === 'fulfilled' && !tracksSnap.value.empty) {
-        const firestoreTracks = tracksSnap.value.docs.map(d => d.data() as Track);
-        setStore({ tracks: firestoreTracks });
-        await set('tracks', firestoreTracks);
+      const res = await fetch('/api/catalog');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.tracks) && data.tracks.length > 0) {
+          setStore({ tracks: data.tracks });
+          await set('tracks', data.tracks);
+        }
+        if (Array.isArray(data.products) && data.products.length > 0) {
+          setStore({ products: data.products });
+          await set('products', data.products);
+        }
+        if (Array.isArray(data.tourDates) && data.tourDates.length > 0) {
+          setStore({ tourDates: data.tourDates });
+          await set('tourDates', data.tourDates);
+        }
+        if (Array.isArray(data.blogPosts) && data.blogPosts.length > 0) {
+          setStore({ blogPosts: data.blogPosts });
+          await set('blogPosts', data.blogPosts);
+        }
+        if (data.homeContent) {
+          setStore({ homeContent: data.homeContent });
+          await set('home_content', data.homeContent);
+        }
+        if (Array.isArray(data.paymentGateways)) {
+          setStore({ paymentGateways: data.paymentGateways });
+        }
       }
-      if (productsSnap.status === 'fulfilled' && !productsSnap.value.empty) {
-        const firestoreProducts = productsSnap.value.docs.map(d => d.data() as Product);
-        setStore({ products: firestoreProducts });
-        await set('products', firestoreProducts);
-      }
-      if (tourSnap.status === 'fulfilled' && !tourSnap.value.empty) {
-        const firestoreTour = tourSnap.value.docs.map(d => d.data() as TourDate);
-        setStore({ tourDates: firestoreTour });
-        await set('tourDates', firestoreTour);
-      }
-      if (blogSnap.status === 'fulfilled' && !blogSnap.value.empty) {
-        const firestoreBlog = blogSnap.value.docs.map(d => d.data() as BlogPost);
-        setStore({ blogPosts: firestoreBlog });
-        await set('blogPosts', firestoreBlog);
-      }
-      if (ordersSnap.status === 'fulfilled' && !ordersSnap.value.empty) {
-        const firestoreOrders = ordersSnap.value.docs.map(d => d.data() as Order);
-        setStore({ orders: firestoreOrders });
-        await set('orders', firestoreOrders);
-      }
-      if (msgSnap.status === 'fulfilled' && !msgSnap.value.empty) {
-        const firestoreMsgs = msgSnap.value.docs.map(d => d.data() as ContactMessage);
-        setStore({ contactMessages: firestoreMsgs });
-        await set('contact_messages', firestoreMsgs);
-      }
-    } catch (e) {
-      console.warn('Firestore load fallback to local store:', e);
+    } catch {
+      // Fallback to local/seed data
     } finally {
-      // Ensure visual feedback persists for a moment so skeleton states are visible and smooth
       setTimeout(() => {
         setStore({ isProductsLoading: false, isBlogLoading: false });
-      }, 400);
+      }, 250);
     }
   },
 
   initAuth: () => {
-    onAuthStateChanged(auth, (user) => {
-      setStore({ user, isAuthLoaded: true });
+    const existingToken = getStore().authToken;
+    if (existingToken) {
+      fetch('/api/auth/me', {
+        headers: getAuthHeaders(existingToken)
+      })
+        .then(async res => {
+          if (res.ok) {
+            const data = await res.json();
+            setStore({
+              account: data.user,
+              orders: Array.isArray(data.orders) ? data.orders : getStore().orders,
+              isAuthLoaded: true
+            });
+            if (data.user?.role === 'admin') {
+              getStore().fetchAdminVault();
+            }
+          } else {
+            localStorage.removeItem('zeji_auth_token');
+            setStore({ authToken: null, account: null, isAuthLoaded: true });
+          }
+        })
+        .catch(() => {
+          setStore({ isAuthLoaded: true });
+        });
+    } else {
+      setStore({ isAuthLoaded: true });
+    }
+
+    onAuthStateChanged(auth, (firebaseUser) => {
+      setStore({ user: firebaseUser, isAuthLoaded: true });
     });
   },
-  
+
   login: async () => {
     try {
       await loginWithGoogle();
@@ -500,8 +966,19 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
       }
     }
   },
-  
+
   logout: async () => {
-    await logoutFirebase();
+    localStorage.removeItem('zeji_auth_token');
+    setStore({ account: null, authToken: null, vaultSnapshot: null });
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore
+    }
+    try {
+      await logoutFirebase();
+    } catch {
+      // ignore
+    }
   }
 }));

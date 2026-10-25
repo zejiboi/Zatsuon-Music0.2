@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, VolumeX, Disc, Bot, X, Play, Pause, Sliders, Music, Radio, SkipBack, SkipForward, Sparkles } from 'lucide-react';
+import { Volume2, VolumeX, Disc, X, Play, Pause, Sliders, Music, SkipBack, SkipForward, Sparkles } from 'lucide-react';
 import { useDarkOrchestra } from '../lib/useDarkOrchestra';
 import { OrchestraPreset } from '../lib/darkOrchestraEngine';
 import { useStore } from '../store/useStore';
@@ -7,11 +7,6 @@ import { useSiteStore } from '../store/useSiteStore';
 import { isSfxMuted, toggleSfx, playHoverSound, playSelectSound } from '../lib/gameSound';
 import { motion, AnimatePresence } from 'motion/react';
 import { WaveformMiniPreview } from './WaveformMiniPreview';
-
-interface SoundAndAISidebarProps {
-  onOpenAIChat: () => void;
-  isAIChatOpen: boolean;
-}
 
 const ORCHESTRA_MOVEMENTS: { id: OrchestraPreset; title: string; num: string }[] = [
   { id: 'GOTHIC_REQUIEM', title: 'GOTHIC REQUIEM', num: 'I' },
@@ -22,28 +17,28 @@ const ORCHESTRA_MOVEMENTS: { id: OrchestraPreset; title: string; num: string }[]
   { id: 'CATHEDRAL_NOIR', title: 'CATHEDRAL NOIR', num: 'VI' },
 ];
 
-export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAIChat, isAIChatOpen }) => {
-  const { 
-    isPlaying: isOrchestraPlaying, 
-    volume, 
-    preset, 
-    activeMode, 
-    currentSong, 
-    toggle: toggleOrchestra, 
-    setVolume, 
-    setPreset, 
-    setSong, 
-    unlock 
+export const SoundAndAISidebar: React.FC = () => {
+  const {
+    isPlaying: isOrchestraPlaying,
+    volume,
+    preset,
+    activeMode,
+    currentSong,
+    toggle: toggleOrchestra,
+    setVolume,
+    setPreset,
+    setSong,
+    unlock
   } = useDarkOrchestra();
-  
+
   const { currentTrack, isPlaying: isTrackPlaying, togglePlayPause, playTrack } = useStore();
   const { tracks } = useSiteStore();
-  
+
   const [sfxActive, setSfxActive] = useState(!isSfxMuted());
   const [isOrchestraMenuOpen, setIsOrchestraMenuOpen] = useState(false);
   const [isTrackMenuOpen, setIsTrackMenuOpen] = useState(false);
   const [ambientTab, setAmbientTab] = useState<'movements' | 'songs'>('songs');
-  
+
   const orchestraMenuRef = useRef<HTMLDivElement>(null);
   const trackMenuRef = useRef<HTMLDivElement>(null);
 
@@ -121,9 +116,9 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
 
   return (
     <>
-      {/* Floating Vertical HUD Side Bar (Offset inward to avoid spectrogram overlap) */}
-      <aside 
-        aria-label="Audio Controls and AI Assistant"
+      {/* Floating Vertical Audio HUD Side Bar (Offset inward to avoid spectrogram overlap) */}
+      <aside
+        aria-label="Audio Engine Controls"
         className="fixed right-2 sm:right-6 md:right-10 top-1/2 -translate-y-1/2 z-40 flex flex-col items-center gap-1.5 sm:gap-2 p-1 sm:p-2 bg-black border-2 border-white shadow-[2px_2px_0_#00FF66] sm:shadow-[3px_3px_0_#00FF66] select-none"
         style={{
           clipPath: 'polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%)'
@@ -202,40 +197,16 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
           {sfxActive ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" />}
         </button>
 
-        {/* Divider */}
-        <div className="w-full h-[1px] bg-zinc-800 my-0.5"></div>
-
-        {/* 4. AI Assistant Icon */}
-        <button
-          onClick={() => {
-            playSelectSound();
-            onOpenAIChat();
-          }}
-          onMouseEnter={playHoverSound}
-          className={`w-7 sm:w-10 h-7 sm:h-10 flex items-center justify-center border-2 transition-all relative ${
-            isAIChatOpen
-              ? 'bg-white text-black border-white shadow-[1px_1px_0_#ffffff] sm:shadow-[2px_2px_0_#ffffff]'
-              : 'bg-black text-white border-white hover:bg-white hover:text-black shadow-[1px_1px_0_#ffffff] sm:shadow-[2px_2px_0_#ffffff]'
-          }`}
-          title="AI Copilot Assistant"
-          aria-label="Open AI Copilot"
-        >
-          <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-          <span className="absolute -top-1 -right-1 text-[6px] sm:text-[7px] font-mono font-bold bg-white text-black px-0.5 leading-tight">
-            AI
-          </span>
-        </button>
-
         {/* Decorative Bottom Crosshair */}
         <div className="w-full flex items-center justify-center pt-0.5 sm:pt-1 border-t border-zinc-800 text-[7px] sm:text-[8px] font-mono text-zinc-500">
-          SYS
+          DSP
         </div>
       </aside>
 
-      {/* Foreground Song Tracks Playlist Menu (Centered to clear side spectrograms) */}
+      {/* Foreground Song Tracks Playlist Menu */}
       <AnimatePresence>
         {isTrackMenuOpen && (
-          <div 
+          <div
             onClick={() => setIsTrackMenuOpen(false)}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px] pointer-events-auto"
           >
@@ -354,10 +325,10 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
         )}
       </AnimatePresence>
 
-      {/* Enhanced Ambient Engine Menu (Centered to clear side spectrograms) */}
+      {/* Enhanced Ambient Engine Menu */}
       <AnimatePresence>
         {isOrchestraMenuOpen && (
-          <div 
+          <div
             onClick={() => setIsOrchestraMenuOpen(false)}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px] pointer-events-auto"
           >
@@ -373,7 +344,6 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
                 clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))'
               }}
             >
-              {/* Header with Title and Prominent [X] Close Button */}
               <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-white">
                 <div className="flex items-center gap-2">
                   <span className="px-1.5 py-0.5 bg-[#00FF66] text-black font-mono font-black text-[10px]">
@@ -403,7 +373,6 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
                 </button>
               </div>
 
-              {/* Master Power Toggle & Source Controls */}
               <div className="flex items-center justify-between gap-3 mb-3 p-2 bg-zinc-950 border border-zinc-800">
                 <span className="text-xs font-mono font-bold text-zinc-300">
                   AMBIENT AUDIO
@@ -444,7 +413,6 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
                 </div>
               </div>
 
-              {/* Ambient Volume Slider */}
               <div className="mb-3 p-2 bg-zinc-950 border border-zinc-800">
                 <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-zinc-300">
                   <span className="flex items-center gap-1.5 font-bold text-[11px]">
@@ -465,7 +433,6 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
                 />
               </div>
 
-              {/* Tab Selector: Change Ambient Songs vs Generative Movements */}
               <div className="grid grid-cols-2 gap-1 mb-3 border border-zinc-800 p-1 bg-black">
                 <button
                   onClick={() => {
@@ -498,7 +465,6 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
                 </button>
               </div>
 
-              {/* TAB 1: Change Ambient Songs (User Requested Feature) */}
               {ambientTab === 'songs' && (
                 <div className="space-y-1.5 max-h-[250px] overflow-y-auto pr-1">
                   <span className="text-[9px] font-mono text-[#00FF66] font-bold block uppercase tracking-wider mb-1">
@@ -551,7 +517,6 @@ export const SoundAndAISidebar: React.FC<SoundAndAISidebarProps> = ({ onOpenAICh
                 </div>
               )}
 
-              {/* TAB 2: Generative Synthesizer Movements */}
               {ambientTab === 'movements' && (
                 <div className="space-y-1.5 max-h-[250px] overflow-y-auto pr-1">
                   <span className="text-[9px] font-mono text-[#00FF66] font-bold block uppercase tracking-wider mb-1">
