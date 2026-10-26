@@ -54,12 +54,35 @@ export interface Album {
   price?: number;
 }
 
+export interface PanelSettings {
+  heroHeight?: 'compact' | 'standard' | 'cinematic';
+  mangaCardSize?: 'compact' | 'standard' | 'large';
+  cornerCutSize?: 'subtle' | 'standard' | 'deep';
+  shadowDepth?: 'flat' | 'standard' | 'deep';
+  storeGridDensity?: 'compact' | 'standard' | 'large';
+}
+
+export type PageRouteKey = 'global' | 'home' | 'music' | 'tour' | 'store' | 'blog' | 'contact' | 'cart';
+
+export interface PageBackgroundVideo {
+  videoUrl: string;
+  enabled: boolean;
+  opacity: number;
+  overlayStyle: 'screentone' | 'vignette' | 'scanlines' | 'none';
+  playbackRate: number;
+  blur: number;
+  name?: string;
+}
+
+export type PageBackgroundConfig = Record<PageRouteKey, PageBackgroundVideo>;
+
 export interface HomeContent {
   albumTitle: string;
   albumSubtitle: string;
   heroImageUrl: string;
   featuredTrackId?: string;
   bannerTag?: string;
+  panelSettings?: PanelSettings;
 }
 
 export interface OrderItem {

@@ -8,9 +8,33 @@ import { StoreSkeleton } from '../components/StoreSkeleton';
 
 export const Store: React.FC = () => {
   const { addToCart, setIsCartOpen } = useStore();
-  const { products, isProductsLoading, fetchProducts } = useSiteStore();
+  const { products, isProductsLoading, fetchProducts, homeContent } = useSiteStore();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
+
+  const panelSettings = homeContent?.panelSettings || {
+    storeGridDensity: 'standard',
+    cornerCutSize: 'standard',
+    shadowDepth: 'standard'
+  };
+
+  const storeGridClass = {
+    compact: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-5',
+    large: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 sm:gap-8',
+    standard: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8'
+  }[panelSettings.storeGridDensity || 'standard'];
+
+  const cardClipPath = {
+    subtle: 'polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px))',
+    deep: 'polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px))',
+    standard: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))'
+  }[panelSettings.cornerCutSize || 'standard'];
+
+  const cardShadowClass = {
+    flat: 'shadow-[2px_2px_0_#00FF66] sm:shadow-[3px_3px_0_#00FF66] hover:shadow-[2px_2px_0_#ffffff] sm:hover:shadow-[3px_3px_0_#ffffff]',
+    deep: 'shadow-[5px_5px_0_#00FF66] sm:shadow-[9px_9px_0_#00FF66] hover:shadow-[5px_5px_0_#ffffff] sm:hover:shadow-[9px_9px_0_#ffffff]',
+    standard: 'shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff]'
+  }[panelSettings.shadowDepth || 'standard'];
 
   if (isProductsLoading) {
     return <StoreSkeleton />;
@@ -102,14 +126,14 @@ export const Store: React.FC = () => {
       </div>
 
       {/* Product Grid: High Visual Dominance Manga Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
+      <div className={storeGridClass}>
         {filteredProducts.map((product, idx) => (
           <div 
             key={product.id} 
             onMouseEnter={playHoverSound}
-            className="group flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff] hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden relative"
+            className={`group flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all ${cardShadowClass} hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden relative`}
             style={{
-              clipPath: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))'
+              clipPath: cardClipPath
             }}
           >
             {/* Top Comic Index Label */}

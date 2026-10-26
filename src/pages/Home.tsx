@@ -4,7 +4,7 @@ import { Play, Pause, ArrowRight, Disc, ShoppingBag, X, Maximize2 } from 'lucide
 import { useStore } from '../store/useStore';
 import { useSiteStore } from '../store/useSiteStore';
 import { playHoverSound, playSelectSound } from '../lib/gameSound';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export const Home: React.FC = () => {
   const { playTrack, currentTrack, isPlaying, togglePlayPause } = useStore();
@@ -16,6 +16,63 @@ export const Home: React.FC = () => {
   const featuredTrack = (homeContent?.featuredTrackId && tracks.find(t => t.id === homeContent.featuredTrackId)) || tracks[0];
 
   const [isCoverFullScreen, setIsCoverFullScreen] = useState(false);
+
+  const panelSettings = homeContent?.panelSettings || {
+    heroHeight: 'standard',
+    mangaCardSize: 'standard',
+    cornerCutSize: 'standard',
+    shadowDepth: 'standard',
+    storeGridDensity: 'standard'
+  };
+
+  // Dynamic Panel Sizing Configurations
+  const heroHeightClass = {
+    compact: 'aspect-[21/9] max-h-[360px] sm:max-h-[420px]',
+    cinematic: 'aspect-[16/9] max-h-[620px] sm:max-h-[720px]',
+    standard: 'aspect-[16/9] sm:aspect-[21/9] max-h-[500px] sm:max-h-[560px]'
+  }[panelSettings.heroHeight || 'standard'];
+
+  const heroClipPath = {
+    subtle: 'polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px))',
+    deep: 'polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px))',
+    standard: 'polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))'
+  }[panelSettings.cornerCutSize || 'standard'];
+
+  const cardClipPath = {
+    subtle: 'polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px))',
+    deep: 'polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px))',
+    standard: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))'
+  }[panelSettings.cornerCutSize || 'standard'];
+
+  const heroShadowClass = {
+    flat: 'shadow-[2px_2px_0_#00FF66] sm:shadow-[4px_4px_0_#00FF66]',
+    deep: 'shadow-[6px_6px_0_#00FF66] sm:shadow-[12px_12px_0_#00FF66]',
+    standard: 'shadow-[4px_4px_0_#00FF66] sm:shadow-[8px_8px_0_#00FF66]'
+  }[panelSettings.shadowDepth || 'standard'];
+
+  const cardShadowClass = {
+    flat: 'shadow-[2px_2px_0_#00FF66] sm:shadow-[3px_3px_0_#00FF66] hover:shadow-[2px_2px_0_#ffffff] sm:hover:shadow-[3px_3px_0_#ffffff]',
+    deep: 'shadow-[5px_5px_0_#00FF66] sm:shadow-[9px_9px_0_#00FF66] hover:shadow-[5px_5px_0_#ffffff] sm:hover:shadow-[9px_9px_0_#ffffff]',
+    standard: 'shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff]'
+  }[panelSettings.shadowDepth || 'standard'];
+
+  const thumbnailAspectClass = {
+    compact: 'aspect-[16/10]',
+    large: 'aspect-[1/1]',
+    standard: 'aspect-[4/3]'
+  }[panelSettings.mangaCardSize || 'standard'];
+
+  const captionPaddingClass = {
+    compact: 'p-2 sm:p-2.5',
+    large: 'p-3.5 sm:p-5',
+    standard: 'p-2.5 sm:p-4'
+  }[panelSettings.mangaCardSize || 'standard'];
+
+  const titleSizeClass = {
+    compact: 'text-xs sm:text-base',
+    large: 'text-base sm:text-xl',
+    standard: 'text-sm sm:text-lg'
+  }[panelSettings.mangaCardSize || 'standard'];
 
   const handlePlayFeatured = () => {
     playSelectSound();
@@ -55,16 +112,16 @@ export const Home: React.FC = () => {
       {/* Hero: Minimalist Japanese Manga Splash Panel (巻頭見開き) */}
       <section className="px-2 xs:px-3 sm:px-8 pt-4 sm:pt-8 pb-6 sm:pb-10 max-w-[1440px] mx-auto w-full">
         <div 
-          className="relative bg-black border-2 border-white shadow-[4px_4px_0_#00FF66] sm:shadow-[8px_8px_0_#00FF66] overflow-hidden group"
+          className={`relative bg-black border-2 border-white ${heroShadowClass} overflow-hidden group transition-all duration-300`}
           style={{
-            clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))'
+            clipPath: heroClipPath
           }}
         >
           {/* Main Visual: Clicking plays the song AND puts cover art as full screen */}
           <div 
             onClick={handleMainImageClick}
             onMouseEnter={playHoverSound}
-            className="relative aspect-[16/9] sm:aspect-[21/9] w-full overflow-hidden bg-black max-h-[560px] cursor-pointer group/art"
+            className={`relative ${heroHeightClass} w-full overflow-hidden bg-black cursor-pointer group/art transition-all duration-300`}
             title="Click to play music and expand cover art full screen"
           >
             <img 
@@ -273,13 +330,13 @@ export const Home: React.FC = () => {
             to="/music"
             onMouseEnter={playHoverSound}
             onClick={playSelectSound}
-            className="group relative flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff] hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden"
+            className={`group relative flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all ${cardShadowClass} hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden`}
             style={{
-              clipPath: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))'
+              clipPath: cardClipPath
             }}
           >
             {/* Big Manga Artwork */}
-            <div className="relative aspect-[4/3] w-full overflow-hidden bg-black border-b-2 border-zinc-800">
+            <div className={`relative ${thumbnailAspectClass} w-full overflow-hidden bg-black border-b-2 border-zinc-800 transition-all duration-300`}>
               <img 
                 src="/src/assets/images/manga_sound_panel_1792583212523.jpg" 
                 alt="Manga Sound Archive" 
@@ -291,12 +348,12 @@ export const Home: React.FC = () => {
             </div>
 
             {/* Minimal Caption Box */}
-            <div className="p-2.5 sm:p-4 flex items-center justify-between bg-black">
+            <div className={`${captionPaddingClass} flex items-center justify-between bg-black transition-all duration-300`}>
               <div>
                 <span className="text-[9px] sm:text-[10px] font-mono text-[#00FF66] font-bold block">
                   AUDIO ARCHIVE
                 </span>
-                <h3 className="text-sm sm:text-lg font-game font-black text-white uppercase group-hover:text-[#00FF66] transition-colors">
+                <h3 className={`${titleSizeClass} font-game font-black text-white uppercase group-hover:text-[#00FF66] transition-colors`}>
                   01 音響 SOUND
                 </h3>
               </div>
@@ -311,13 +368,13 @@ export const Home: React.FC = () => {
             to="/store"
             onMouseEnter={playHoverSound}
             onClick={playSelectSound}
-            className="group relative flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff] hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden"
+            className={`group relative flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all ${cardShadowClass} hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden`}
             style={{
-              clipPath: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))'
+              clipPath: cardClipPath
             }}
           >
             {/* Big Manga Artwork */}
-            <div className="relative aspect-[4/3] w-full overflow-hidden bg-black border-b-2 border-zinc-800">
+            <div className={`relative ${thumbnailAspectClass} w-full overflow-hidden bg-black border-b-2 border-zinc-800 transition-all duration-300`}>
               <img 
                 src="/src/assets/images/manga_gear_panel_1792583224309.jpg" 
                 alt="Manga Gear Store" 
@@ -329,12 +386,12 @@ export const Home: React.FC = () => {
             </div>
 
             {/* Minimal Caption Box */}
-            <div className="p-2.5 sm:p-4 flex items-center justify-between bg-black">
+            <div className={`${captionPaddingClass} flex items-center justify-between bg-black transition-all duration-300`}>
               <div>
                 <span className="text-[9px] sm:text-[10px] font-mono text-[#00FF66] font-bold block">
                   ARMORY & MERCH
                 </span>
-                <h3 className="text-sm sm:text-lg font-game font-black text-white uppercase group-hover:text-[#00FF66] transition-colors">
+                <h3 className={`${titleSizeClass} font-game font-black text-white uppercase group-hover:text-[#00FF66] transition-colors`}>
                   02 兵站 STORE
                 </h3>
               </div>
@@ -349,13 +406,13 @@ export const Home: React.FC = () => {
             to="/tour"
             onMouseEnter={playHoverSound}
             onClick={playSelectSound}
-            className="group relative flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff] hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden"
+            className={`group relative flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all ${cardShadowClass} hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden`}
             style={{
-              clipPath: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))'
+              clipPath: cardClipPath
             }}
           >
             {/* Big Manga Artwork */}
-            <div className="relative aspect-[4/3] w-full overflow-hidden bg-black border-b-2 border-zinc-800">
+            <div className={`relative ${thumbnailAspectClass} w-full overflow-hidden bg-black border-b-2 border-zinc-800 transition-all duration-300`}>
               <img 
                 src="/src/assets/images/manga_tour_panel_1792583237044.jpg" 
                 alt="Manga Tour Concert" 
@@ -367,12 +424,12 @@ export const Home: React.FC = () => {
             </div>
 
             {/* Minimal Caption Box */}
-            <div className="p-2.5 sm:p-4 flex items-center justify-between bg-black">
+            <div className={`${captionPaddingClass} flex items-center justify-between bg-black transition-all duration-300`}>
               <div>
                 <span className="text-[9px] sm:text-[10px] font-mono text-[#00FF66] font-bold block">
                   LIVE EXPEDITION
                 </span>
-                <h3 className="text-sm sm:text-lg font-game font-black text-white uppercase group-hover:text-[#00FF66] transition-colors">
+                <h3 className={`${titleSizeClass} font-game font-black text-white uppercase group-hover:text-[#00FF66] transition-colors`}>
                   03 巡業 TOUR
                 </h3>
               </div>
@@ -387,13 +444,13 @@ export const Home: React.FC = () => {
             to="/contact"
             onMouseEnter={playHoverSound}
             onClick={playSelectSound}
-            className="group relative flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff] hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden"
+            className={`group relative flex flex-col bg-black border-2 border-white hover:border-[#00FF66] transition-all ${cardShadowClass} hover:translate-x-[-1px] hover:translate-y-[-1px] overflow-hidden`}
             style={{
-              clipPath: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))'
+              clipPath: cardClipPath
             }}
           >
             {/* Big Manga Artwork */}
-            <div className="relative aspect-[4/3] w-full overflow-hidden bg-black border-b-2 border-zinc-800">
+            <div className={`relative ${thumbnailAspectClass} w-full overflow-hidden bg-black border-b-2 border-zinc-800 transition-all duration-300`}>
               <img 
                 src="/src/assets/images/game_album_midnight_echoes_1792574038993.jpg" 
                 alt="Manga Signal Dispatch" 
@@ -405,12 +462,12 @@ export const Home: React.FC = () => {
             </div>
 
             {/* Minimal Caption Box */}
-            <div className="p-2.5 sm:p-4 flex items-center justify-between bg-black">
+            <div className={`${captionPaddingClass} flex items-center justify-between bg-black transition-all duration-300`}>
               <div>
                 <span className="text-[9px] sm:text-[10px] font-mono text-[#00FF66] font-bold block">
                   TRANSMISSION
                 </span>
-                <h3 className="text-sm sm:text-lg font-game font-black text-white uppercase group-hover:text-[#00FF66] transition-colors">
+                <h3 className={`${titleSizeClass} font-game font-black text-white uppercase group-hover:text-[#00FF66] transition-colors`}>
                   04 交信 CONTACT
                 </h3>
               </div>

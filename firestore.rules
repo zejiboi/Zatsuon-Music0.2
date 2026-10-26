@@ -247,6 +247,10 @@ service cloud.firestore {
       allow get, list: if true;
       allow create, update, delete: if isAdmin();
     }
+    match /page_backgrounds/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
 
     // Customer orders & armory checkout manifests
     match /orders/{orderId} {
