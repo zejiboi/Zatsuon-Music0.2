@@ -215,14 +215,70 @@ async function runTests() {
   );
 
   // 8. Verify On-Disk Database File is Ciphertext (Not Plaintext)
-  console.log('\n[8/8] Verifying On-Disk Database File (server_db.enc.json) is AES-256-GCM Ciphertext...');
+  console.log('\n[8/9] Verifying On-Disk Database File (server_db.enc.json) is AES-256-GCM Ciphertext...');
   const dbRaw = fs.readFileSync(path.join(process.cwd(), 'server_db.enc.json'), 'utf8');
   const dbEnvelope = JSON.parse(dbRaw);
   await assert(dbEnvelope.alg === 'aes-256-gcm', 'On-disk envelope uses aes-256-gcm');
   await assert(!dbRaw.includes(uniqueEmail), 'Plaintext user email does NOT appear in on-disk file (encrypted at rest)');
 
+  // 9. Verify All Production Static Asset Links, SPA Routes, Digital Downloads & Multi-Gateway Checkout
+  console.log('\n[9/9] Verifying Asset Links, SPA Routes, Digital Downloads & All 4 Gateways...');
+  const assetPaths = [
+    '/src/assets/images/manga_hero_splash_1792583199243.jpg',
+    '/src/assets/images/manga_sound_panel_1792583212523.jpg',
+    '/src/assets/images/manga_gear_panel_1792583224309.jpg',
+    '/src/assets/images/manga_tour_panel_1792583237044.jpg',
+    '/src/assets/images/game_album_midnight_echoes_1792574038993.jpg'
+  ];
+  for (const assetPath of assetPaths) {
+    const assetRes = await fetch(`${BASE}${assetPath}`);
+    const ct = assetRes.headers.get('content-type') || '';
+    await assert(
+      assetRes.status === 200 && ct.includes('image/'),
+      `Production asset link ${assetPath} serves valid image (${ct})`
+    );
+  }
+
+  const spaRoutes = ['/', '/music', '/store', '/tour', '/blog', '/contact', '/cart', '/account', '/admin'];
+  for (const route of spaRoutes) {
+    const routeRes = await fetch(`${BASE}${route}`);
+    const ct = routeRes.headers.get('content-type') || '';
+    await assert(
+      routeRes.status === 200 && ct.includes('text/html'),
+      `SPA route ${route} resolves cleanly (200 text/html)`
+    );
+  }
+
+  const dlRes = await fetch(`${BASE}/api/download/track-1`);
+  const dlCt = dlRes.headers.get('content-type') || '';
+  const dlDisp = dlRes.headers.get('content-disposition') || '';
+  await assert(
+    dlRes.status === 200 && dlCt.includes('audio/wav') && dlDisp.includes('attachment'),
+    `GET /api/download/track-1 serves downloadable WAV master (${dlDisp})`
+  );
+
+  for (const gw of ['card', 'paypal', 'paystack']) {
+    const gwCheckoutRes = await fetch(`${BASE}/api/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: {
+          name: 'Operative Guest',
+          email: 'operative@zeji.music',
+          address: 'Digital Vault Delivery',
+          city: 'Global Network',
+          country: 'United States'
+        },
+        items: [{ id: 'tour-1', name: 'TOUR PASS: BERLIN', price: 55, quantity: 1, category: 'Ticket' }],
+        paymentMethod: gw,
+        shippingMethod: 'standard'
+      })
+    });
+    await assert(gwCheckoutRes.status === 201, `Guest checkout via gateway "${gw}" settles cleanly (201)`);
+  }
+
   console.log('\n==============================================================');
-  console.log('  ALL 8 E2E TEST SUITES PASSED (100% PASS RATE)');
+  console.log('  ALL 9 E2E TEST SUITES PASSED (100% PASS RATE)');
   console.log('==============================================================');
 }
 

@@ -53,14 +53,18 @@ export const CartSidebar: React.FC = () => {
                   <ShoppingBag className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleCheckout}
+                    className="flex items-center gap-1.5 text-left group"
+                  >
                     <span className="text-[10px] [font-family:var(--font-manga)] text-[#00FF66] font-bold">
                       【 装備一覧 】
                     </span>
-                    <h2 className="text-lg font-game font-black text-white uppercase tracking-wider">
+                    <h2 className="text-lg font-game font-black text-white group-hover:text-[#00FF66] uppercase tracking-wider transition-colors">
                       ARMORY CART
                     </h2>
-                  </div>
+                  </button>
                   <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-400">
                     <span>REQUISITION COUNT: {cart.reduce((t, i) => t + i.quantity, 0)} 点</span>
                     {account && (

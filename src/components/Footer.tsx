@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useSiteStore } from '../store/useSiteStore';
 
 export const Footer: React.FC = () => {
@@ -29,9 +30,9 @@ export const Footer: React.FC = () => {
                 Explorations in electronic modular synthesis and cinematic soundscapes.
               </p>
               <div className="flex gap-6">
-                <a href="#" className="text-[#666] hover:text-[#D4AF37] text-xs transition-colors font-bold tracking-widest">INSTAGRAM</a>
-                <a href="#" className="text-[#666] hover:text-[#D4AF37] text-xs transition-colors font-bold tracking-widest">SPOTIFY</a>
-                <a href="#" className="text-[#666] hover:text-[#D4AF37] text-xs transition-colors font-bold tracking-widest">YOUTUBE</a>
+                <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-[#666] hover:text-[#D4AF37] text-xs transition-colors font-bold tracking-widest">INSTAGRAM</a>
+                <a href="https://open.spotify.com" target="_blank" rel="noopener noreferrer" className="text-[#666] hover:text-[#D4AF37] text-xs transition-colors font-bold tracking-widest">SPOTIFY</a>
+                <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" className="text-[#666] hover:text-[#D4AF37] text-xs transition-colors font-bold tracking-widest">YOUTUBE</a>
               </div>
             </div>
           </div>
@@ -40,10 +41,10 @@ export const Footer: React.FC = () => {
           <div className="md:col-span-4">
             <h4 className="text-[10px] font-semibold text-[#666] uppercase tracking-[0.2em] mb-6">Explore</h4>
             <ul className="space-y-3 text-[13px] font-medium text-[#e0e0e0]">
-              <li><a href="/music" className="hover:text-[#D4AF37] transition-colors block border-b border-[#ffffff05] pb-2">Discography</a></li>
-              <li><a href="/tour" className="hover:text-[#D4AF37] transition-colors block border-b border-[#ffffff05] pb-2">Tour Dates</a></li>
-              <li><a href="/store" className="hover:text-[#D4AF37] transition-colors block border-b border-[#ffffff05] pb-2">Merch Store</a></li>
-              <li><a href="/contact" className="hover:text-[#D4AF37] transition-colors block pb-2">Booking & Contact</a></li>
+              <li><Link to="/music" className="hover:text-[#D4AF37] transition-colors block border-b border-[#ffffff05] pb-2">Discography</Link></li>
+              <li><Link to="/tour" className="hover:text-[#D4AF37] transition-colors block border-b border-[#ffffff05] pb-2">Tour Dates</Link></li>
+              <li><Link to="/store" className="hover:text-[#D4AF37] transition-colors block border-b border-[#ffffff05] pb-2">Merch Store</Link></li>
+              <li><Link to="/contact" className="hover:text-[#D4AF37] transition-colors block pb-2">Booking & Contact</Link></li>
             </ul>
           </div>
 

@@ -1,11 +1,13 @@
-import React from 'react';
-import { ArrowRight, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowRight, RefreshCw, X, ExternalLink } from 'lucide-react';
 import { useSiteStore } from '../store/useSiteStore';
 import { playHoverSound, playSelectSound } from '../lib/gameSound';
 import { BlogSkeleton } from '../components/BlogSkeleton';
+import { BlogPost } from '../types';
 
 export const Blog: React.FC = () => {
   const { blogPosts, isBlogLoading, fetchBlogPosts } = useSiteStore();
+  const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
   
   if (isBlogLoading) {
     return <BlogSkeleton />;
@@ -55,8 +57,11 @@ export const Blog: React.FC = () => {
           <article 
             key={post.id} 
             onMouseEnter={playHoverSound}
-            onClick={playSelectSound}
-            className="flex flex-col group bg-black p-3.5 sm:p-7 border-2 border-white hover:border-[#00FF66] transition-all shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff] hover:translate-x-[-1px] hover:translate-y-[-1px] relative overflow-hidden"
+            onClick={() => {
+              playSelectSound();
+              setSelectedPost(post);
+            }}
+            className="flex flex-col group bg-black p-3.5 sm:p-7 border-2 border-white hover:border-[#00FF66] transition-all shadow-[3px_3px_0_#00FF66] sm:shadow-[6px_6px_0_#00FF66] hover:shadow-[3px_3px_0_#ffffff] sm:hover:shadow-[6px_6px_0_#ffffff] hover:translate-x-[-1px] hover:translate-y-[-1px] relative overflow-hidden cursor-pointer"
             style={{
               clipPath: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))'
             }}
@@ -90,7 +95,7 @@ export const Blog: React.FC = () => {
             </p>
 
             <div className="pt-2 sm:pt-3 border-t-2 border-zinc-900 flex items-center justify-between text-[10px] sm:text-xs font-mono font-bold text-zinc-400 relative z-10">
-              <span className="text-[9px] sm:text-[10px] text-zinc-500 uppercase tracking-wider">INTEL LOG</span>
+              <span className="text-[9px] sm:text-[10px] text-zinc-500 uppercase tracking-wider">READ FULL CHRONICLE</span>
               <span className="flex items-center gap-1 sm:gap-1.5 text-[#00FF66] [font-family:var(--font-manga)]">
                 閲覧 <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               </span>
@@ -98,6 +103,68 @@ export const Blog: React.FC = () => {
           </article>
         ))}
       </div>
+
+      {/* Full Chronicle Manga Reader Modal */}
+      {selectedPost && (
+        <div
+          onClick={() => setSelectedPost(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-2xl w-full max-h-[85vh] overflow-y-auto bg-black border-2 border-white p-5 sm:p-8 shadow-[8px_8px_0_#00FF66] text-white relative"
+          >
+            <div className="flex items-center justify-between pb-3 mb-4 border-b-2 border-white">
+              <span className="px-2 py-0.5 bg-black text-[#00FF66] border border-[#00FF66] font-mono text-xs font-bold">
+                STUDIO INTEL CHRONICLE // {new Date(selectedPost.date).toLocaleDateString()}
+              </span>
+              <button
+                onClick={() => setSelectedPost(null)}
+                className="p-1.5 border border-white text-white hover:bg-[#00FF66] hover:text-black transition-colors"
+                aria-label="Close chronicle"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="aspect-video w-full overflow-hidden border-2 border-white mb-4 bg-black">
+              <img
+                src={selectedPost.imageUrl}
+                alt={selectedPost.title}
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            <h2 className="text-xl sm:text-3xl font-game font-black text-white uppercase mb-3">
+              {selectedPost.title}
+            </h2>
+
+            {selectedPost.excerpt && (
+              <p className="text-xs sm:text-sm font-mono text-[#00FF66] mb-4 border-l-2 border-[#00FF66] pl-3">
+                {selectedPost.excerpt}
+              </p>
+            )}
+
+            <div className="text-xs sm:text-sm text-zinc-300 font-serif leading-relaxed whitespace-pre-line mb-6">
+              {selectedPost.content || selectedPost.excerpt}
+            </div>
+
+            {selectedPost.attachmentUrl && (
+              <div className="pt-4 border-t border-zinc-800 flex justify-end">
+                <a
+                  href={selectedPost.attachmentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-[#00FF66] text-black font-game font-black text-xs uppercase flex items-center gap-1.5 border border-black"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>OPEN ATTACHED DOSSIER</span>
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

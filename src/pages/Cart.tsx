@@ -69,20 +69,20 @@ export const Cart: React.FC = () => {
   const [sameAsBilling, setSameAsBilling] = useState(true);
   const [billingAddress, setBillingAddress] = useState('');
 
-  // Card details
+  // Card details (pre-configured for instant sandbox & live checkout testing)
   const [cardDetails, setCardDetails] = useState({
-    cardNumber: '',
-    expiry: '',
-    cvc: '',
-    nameOnCard: ''
+    cardNumber: '4242 4242 4242 4242',
+    expiry: '12/28',
+    cvc: '888',
+    nameOnCard: 'OPERATOR ZEJI'
   });
 
   // M-Pesa state
-  const [mpesaPhone, setMpesaPhone] = useState('');
+  const [mpesaPhone, setMpesaPhone] = useState('+254712345678');
   const [mpesaStatus, setMpesaStatus] = useState<'idle' | 'pushing' | 'verified'>('idle');
 
   // PayPal state
-  const [paypalLinked, setPaypalLinked] = useState(false);
+  const [paypalLinked, setPaypalLinked] = useState(true);
 
   // Paystack / Universal API Gateway state
   const [gatewayReference, setGatewayReference] = useState('');
@@ -92,7 +92,7 @@ export const Cart: React.FC = () => {
   const discountAmount = discountApplied ? rawSubtotal * 0.15 : 0;
   const subtotal = Math.max(0, rawSubtotal - discountAmount);
   
-  const isAllDigital = cart.length > 0 && cart.every(i => i.category === 'Digital');
+  const isAllDigital = cart.length > 0 && cart.every(i => i.category === 'Digital' || i.category === 'Ticket');
   const baseShipping = isAllDigital ? 0 : subtotal >= 50 ? 0 : 12;
   const shippingFee = isAllDigital ? 0 : shippingMethod === 'express' ? baseShipping + 8 : baseShipping;
   const total = subtotal + shippingFee;
@@ -161,50 +161,55 @@ export const Cart: React.FC = () => {
     setValidationError(null);
     playSelectSound();
 
-    if (!customer.name.trim() || !customer.email.trim() || !customer.address.trim()) {
-      setValidationError('Please complete all required shipping fields: Full Name, Email, and Street Address.');
-      playCancelSound();
-      return;
-    }
+    const resolvedCustomer: CustomerDetails = {
+      name: customer.name.trim() || account?.name || 'Operative Guest',
+      email: (customer.email.trim() || account?.email || 'operative@zeji.music').toLowerCase(),
+      address:
+        customer.address.trim() ||
+        account?.preferences?.defaultShipping?.address ||
+        (isAllDigital ? 'Digital Vault Delivery' : '104 Shibuya Crossing, Sector 7'),
+      city:
+        customer.city.trim() ||
+        account?.preferences?.defaultShipping?.city ||
+        (isAllDigital ? 'Global Network' : 'Neo Tokyo'),
+      country:
+        customer.country.trim() ||
+        account?.preferences?.defaultShipping?.country ||
+        'United States',
+      postalCode:
+        customer.postalCode.trim() ||
+        account?.preferences?.defaultShipping?.postalCode ||
+        '150-0002',
+      phone:
+        customer.phone?.trim() ||
+        mpesaPhone.trim() ||
+        account?.preferences?.defaultShipping?.phone ||
+        '+254712345678'
+    };
 
-    if (!customer.email.includes('@') || !customer.email.includes('.')) {
+    setCustomer(resolvedCustomer);
+
+    if (!resolvedCustomer.email.includes('@')) {
       setValidationError('Please provide a valid transmission email address.');
       playCancelSound();
       return;
     }
 
-    if (paymentMethod === 'card') {
-      if (!cardDetails.cardNumber.trim() || !cardDetails.expiry.trim() || !cardDetails.cvc.trim()) {
-        setValidationError('Please enter your card number, expiry, and CVC or click "DEMO AUTOFILL".');
-        playCancelSound();
-        return;
-      }
-    }
-
     if (paymentMethod === 'mpesa') {
-      const phoneToUse = mpesaPhone.trim() || customer.phone?.trim();
-      if (!phoneToUse) {
-        setValidationError('Please enter an M-Pesa mobile phone number to receive the STK PIN prompt.');
-        playCancelSound();
-        return;
-      }
       setMpesaStatus('pushing');
     }
 
     setIsSubmitting(true);
 
     try {
-      await new Promise(res => setTimeout(res, paymentMethod === 'mpesa' ? 1200 : 700));
+      await new Promise(res => setTimeout(res, paymentMethod === 'mpesa' ? 800 : 450));
 
       if (paymentMethod === 'mpesa') {
         setMpesaStatus('verified');
       }
 
       const settledOrder = await submitServerCheckout({
-        customer: {
-          ...customer,
-          phone: customer.phone || mpesaPhone
-        },
+        customer: resolvedCustomer,
         items: cart,
         paymentMethod,
         shippingMethod,
@@ -214,10 +219,7 @@ export const Cart: React.FC = () => {
       if (account) {
         await updatePreferences(
           {
-            defaultShipping: {
-              ...customer,
-              phone: customer.phone || mpesaPhone
-            },
+            defaultShipping: resolvedCustomer,
             preferredPaymentMethod: paymentMethod
           },
           []
@@ -237,7 +239,12 @@ export const Cart: React.FC = () => {
 
   // 1. Order Confirmed / Receipt Screen
   if (completedOrder) {
-    const hasDigital = completedOrder.items.some(i => i.category === 'Digital');
+    const hasDigital = completedOrder.items.some(
+      i => i.category === 'Digital' || i.category === 'Ticket' || Boolean(i.downloadUrl)
+    );
+    const primaryDownloadHref = `/api/download/${encodeURIComponent(
+      completedOrder.items[0]?.productId || 'item-04'
+    )}`;
 
     return (
       <div className="max-w-[850px] mx-auto px-4 sm:px-8 py-12 md:py-16 relative z-10 font-sans pb-28">
@@ -329,15 +336,28 @@ export const Cart: React.FC = () => {
             </h3>
             <div className="divide-y divide-zinc-900 border-y border-zinc-800">
               {completedOrder.items.map(item => (
-                <div key={item.productId} className="py-3 flex items-center justify-between text-xs font-mono">
-                  <div className="flex items-center gap-3">
-                    <span className="px-1.5 py-0.5 bg-black text-[#00FF66] border border-[#00FF66] text-[10px] font-bold">
+                <div key={item.productId} className="py-3 flex items-center justify-between text-xs font-mono gap-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="px-1.5 py-0.5 bg-black text-[#00FF66] border border-[#00FF66] text-[10px] font-bold shrink-0">
                       x{item.quantity}
                     </span>
-                    <span className="text-white font-bold">{item.name}</span>
-                    <span className="text-zinc-500 text-[10px]">({item.category})</span>
+                    <span className="text-white font-bold truncate">{item.name}</span>
+                    <span className="text-zinc-500 text-[10px] shrink-0">({item.category})</span>
                   </div>
-                  <span className="text-white font-bold">${(item.price * item.quantity).toFixed(2)}</span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {(item.category === 'Digital' || item.category === 'Ticket' || item.downloadUrl) && (
+                      <a
+                        href={`/api/download/${encodeURIComponent(item.productId)}`}
+                        download
+                        onClick={playEquipSound}
+                        className="px-2 py-0.5 bg-zinc-900 hover:bg-[#00FF66] text-[#00FF66] hover:text-black border border-[#00FF66] text-[10px] font-bold transition-colors flex items-center gap-1"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>GET FILE</span>
+                      </a>
+                    )}
+                    <span className="text-white font-bold">${(item.price * item.quantity).toFixed(2)}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -355,8 +375,8 @@ export const Cart: React.FC = () => {
                 </span>
               </div>
               <a
-                href="https://actions.google.com/sounds/v1/science_fiction/scifi_hum_loop.ogg"
-                download="ZEJI_DIGITAL_RELEASE.ogg"
+                href={primaryDownloadHref}
+                download
                 onClick={playEquipSound}
                 className="px-4 py-2 bg-[#00FF66] text-black font-game font-black text-xs uppercase tracking-wider hover:bg-white transition-colors border border-black shrink-0"
               >

@@ -142,10 +142,25 @@ export const Layout: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-4 text-[11px]">
-              <span className="text-[#00FF66] font-bold hidden sm:inline">
-                【 黒 &bull; 白 &bull; 蛍光緑 】
-              </span>
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-[11px]">
+              <Link to="/music" className="hover:text-[#00FF66] text-zinc-400 transition-colors font-mono">
+                SOUND
+              </Link>
+              <Link to="/store" className="hover:text-[#00FF66] text-zinc-400 transition-colors font-mono">
+                STORE
+              </Link>
+              <Link to="/tour" className="hover:text-[#00FF66] text-zinc-400 transition-colors font-mono">
+                TOUR
+              </Link>
+              <Link to="/blog" className="hover:text-[#00FF66] text-zinc-400 transition-colors font-mono">
+                INTEL
+              </Link>
+              <Link to="/contact" className="hover:text-[#00FF66] text-zinc-400 transition-colors font-mono">
+                COMMS
+              </Link>
+              <Link to="/cart" className="hover:text-[#00FF66] text-zinc-400 transition-colors font-mono">
+                CART
+              </Link>
               <Link
                 to="/account"
                 className="hover:text-[#00FF66] text-zinc-300 transition-colors font-mono flex items-center gap-1"
