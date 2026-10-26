@@ -28,6 +28,7 @@ export const GameNavbar: React.FC = () => {
     { name: 'TOUR', jp: '巡', chapter: '参', path: '/tour', sfxKatakana: 'ゴオオ' },
     { name: 'INTEL', jp: '報', chapter: '四', path: '/blog', sfxKatakana: 'シャッ' },
     { name: 'COMMS', jp: '信', chapter: '伍', path: '/contact', sfxKatakana: 'ピポッ' },
+    { name: 'CART', jp: '購', chapter: '漆', path: '/cart', sfxKatakana: 'チャリン' },
     { name: 'ACCOUNT', jp: '員', chapter: '六', path: '/account', sfxKatakana: 'キィン' },
     { name: 'ADMIN', jp: '制', chapter: '特', path: '/admin', sfxKatakana: 'キーッ' },
   ];
@@ -35,7 +36,7 @@ export const GameNavbar: React.FC = () => {
   const totalCartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#000000] border-b-2 border-white select-none relative shadow-[0_4px_0_#00FF66]">
+    <header className="sticky top-0 z-40 w-full bg-[#000000] border-b-2 border-white select-none shadow-[0_4px_0_#00FF66]">
       {/* Subtle top manga screentone hairline accent */}
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-white opacity-80"></div>
 

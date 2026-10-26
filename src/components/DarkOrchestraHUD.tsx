@@ -213,7 +213,7 @@ export const DarkOrchestraHUD: React.FC = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full mt-2 w-[340px] sm:w-[420px] bg-black border-2 border-white text-white p-4 shadow-[6px_6px_0_#00FF66] z-50 font-sans select-none relative overflow-hidden"
+              className="absolute right-0 top-full mt-2 w-[340px] sm:w-[420px] bg-black border-2 border-white text-white p-4 shadow-[6px_6px_0_#00FF66] z-50 font-sans select-none overflow-hidden"
               style={{
                 clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))'
               }}

@@ -11,8 +11,12 @@ import { Order, CustomerDetails, PaymentMethodId } from '../types';
 import { playHoverSound, playSelectSound, playEquipSound, playCancelSound } from '../lib/gameSound';
 
 export const Cart: React.FC = () => {
-  const { cart, removeFromCart, updateQuantity, getCartTotal, clearCart } = useStore();
+  const { cart, removeFromCart, updateQuantity, getCartTotal, clearCart, setIsCartOpen } = useStore();
   const { submitServerCheckout, paymentGateways, account, updatePreferences } = useSiteStore();
+
+  useEffect(() => {
+    setIsCartOpen(false);
+  }, [setIsCartOpen]);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>('card');
   const [shippingMethod, setShippingMethod] = useState<'standard' | 'express'>('standard');
@@ -53,17 +57,17 @@ export const Cart: React.FC = () => {
         setPaymentMethod(account.preferences.preferredPaymentMethod);
       }
     }
-  }, [account]);
+  }, [account?.id]);
 
   // Sync savedCart in encrypted preferences when logged in
   useEffect(() => {
-    if (account) {
+    if (account?.id) {
       const timer = setTimeout(() => {
         updatePreferences({}, cart);
       }, 600);
       return () => clearTimeout(timer);
     }
-  }, [cart, account]);
+  }, [cart, account?.id]);
 
   // Billing address match toggle
   const [sameAsBilling, setSameAsBilling] = useState(true);

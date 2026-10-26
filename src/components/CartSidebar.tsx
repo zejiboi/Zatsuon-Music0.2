@@ -41,7 +41,7 @@ export const CartSidebar: React.FC = () => {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-            className="fixed inset-y-0 right-0 w-full max-w-md bg-black border-l-2 border-white z-[9996] flex flex-col shadow-[0_0_50px_rgba(0,0,0,1)] font-sans relative overflow-hidden"
+            className="fixed inset-y-0 right-0 w-full max-w-md bg-black border-l-2 border-white z-[9996] flex flex-col shadow-[0_0_50px_rgba(0,0,0,1)] font-sans overflow-hidden"
           >
             {/* Background Screentone */}
             <div className="absolute inset-0 manga-screentone-white opacity-5 pointer-events-none"></div>
@@ -135,6 +135,12 @@ export const CartSidebar: React.FC = () => {
                     >
                       <Disc className="w-3.5 h-3.5 text-[#00FF66]" />
                       <span>BUY TRACKS</span>
+                    </button>
+                    <button 
+                      onClick={handleCheckout}
+                      className="px-4 py-2 border border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-[#00FF66] hover:text-[#00FF66] font-mono font-bold text-xs uppercase transition-all"
+                    >
+                      OPEN CHECKOUT PAGE
                     </button>
                   </div>
                 </div>
