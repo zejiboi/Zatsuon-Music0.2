@@ -4,7 +4,7 @@ set -euo pipefail
 # ==============================================================================
 # ZATSUON // ZEJI v2.0 — Automated VM Deployment & Free Domain Provisioner
 # Target VM Fixed IPs: 192.168.0.188 | 192.168.0.110 | 192.168.10.124
-# Public Floating IP (if attached): 102.164.62.65
+# Public Floating IP: 102.164.62.190
 # ==============================================================================
 
 APP_DIR="${APP_DIR:-$(pwd)}"
@@ -78,5 +78,7 @@ echo "  DEPLOYMENT COMPLETE // FREE DOMAIN URLS ACTIVE:"
 echo "  - LAN Domain 1: http://zatsuon.192.168.0.188.sslip.io"
 echo "  - LAN Domain 2: http://zatsuon.192.168.0.110.sslip.io"
 echo "  - LAN Domain 3: http://zatsuon.192.168.10.124.sslip.io"
-echo "  - Public HTTPS: https://zatsuon.102.164.62.65.sslip.io"
+echo "  - Public HTTPS (sslip.io): https://zatsuon.102.164.62.190.sslip.io"
+echo "  - Public HTTPS (nip.io):   https://zatsuon.102-164-62-190.nip.io"
+echo "  - Direct IP:               http://102.164.62.190"
 echo "=================================================================="

@@ -1,8 +1,8 @@
 # ZATSUON // ZEJI Official Manga Audio & Armory Platform
 # Reverse Proxy & Automatic Free Domain Configuration (sslip.io / nip.io)
-# Supports VM Fixed IPs: 192.168.0.188, 192.168.0.110, 192.168.10.124 & Public Floating IP
+# Supports VM Fixed IPs: 192.168.0.188, 192.168.0.110, 192.168.10.124 & Public Floating IP 102.164.62.190
 
-zatsuon.102.164.62.65.sslip.io, zatsuon.102.164.62.65.nip.io {
+zatsuon.102.164.62.190.sslip.io, zatsuon.102-164-62-190.nip.io {
     encode zstd gzip
     reverse_proxy 127.0.0.1:3000
 }
@@ -13,6 +13,7 @@ http://zatsuon.192.168.10.124.sslip.io,
 http://zatsuon.192.168.0.188.nip.io,
 http://zatsuon.192.168.0.110.nip.io,
 http://zatsuon.192.168.10.124.nip.io,
+http://102.164.62.190,
 http://192.168.0.188,
 http://192.168.0.110,
 http://192.168.10.124,
