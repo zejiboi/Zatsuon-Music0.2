@@ -14,7 +14,10 @@ import {
   PaymentGatewayConfig,
   PaymentMethodId,
   AdminVaultSnapshot,
-  CartItem
+  CartItem,
+  PageBackgroundConfig,
+  PageRouteKey,
+  PageBackgroundVideo
 } from '../types';
 import {
   SEED_TRACKS,
@@ -52,6 +55,17 @@ export const DEFAULT_HOME_CONTENT: HomeContent = {
   bannerTag: '【 新譜解禁 】 ALBUM CHRONICLE VOL. 01'
 };
 
+export const DEFAULT_BACKGROUND_VIDEOS: PageBackgroundConfig = {
+  global: { videoUrl: '', enabled: false, opacity: 0.35, overlayStyle: 'screentone', playbackRate: 1, blur: 0 },
+  home: { videoUrl: '', enabled: false, opacity: 0.35, overlayStyle: 'screentone', playbackRate: 1, blur: 0 },
+  music: { videoUrl: '', enabled: false, opacity: 0.35, overlayStyle: 'screentone', playbackRate: 1, blur: 0 },
+  tour: { videoUrl: '', enabled: false, opacity: 0.35, overlayStyle: 'screentone', playbackRate: 1, blur: 0 },
+  store: { videoUrl: '', enabled: false, opacity: 0.35, overlayStyle: 'screentone', playbackRate: 1, blur: 0 },
+  blog: { videoUrl: '', enabled: false, opacity: 0.35, overlayStyle: 'screentone', playbackRate: 1, blur: 0 },
+  contact: { videoUrl: '', enabled: false, opacity: 0.35, overlayStyle: 'screentone', playbackRate: 1, blur: 0 },
+  cart: { videoUrl: '', enabled: false, opacity: 0.35, overlayStyle: 'screentone', playbackRate: 1, blur: 0 }
+};
+
 interface SiteState {
   tracks: Track[];
   albums: Album[];
@@ -59,6 +73,7 @@ interface SiteState {
   tourDates: TourDate[];
   blogPosts: BlogPost[];
   homeContent: HomeContent;
+  backgroundVideos: PageBackgroundConfig;
   orders: Order[];
   contactMessages: ContactMessage[];
   paymentGateways: PaymentGatewayConfig[];
@@ -73,6 +88,7 @@ interface SiteState {
 
   // Home Content Actions
   updateHomeContent: (content: Partial<HomeContent>) => Promise<void>;
+  updateBackgroundVideo: (pageKey: PageRouteKey, config: Partial<PageBackgroundVideo>) => Promise<void>;
 
   // Tracks Actions
   addTrack: (track: TrackDB) => Promise<void>;
@@ -169,6 +185,7 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
   tourDates: [],
   blogPosts: [],
   homeContent: DEFAULT_HOME_CONTENT,
+  backgroundVideos: DEFAULT_BACKGROUND_VIDEOS,
   orders: [],
   contactMessages: [],
   paymentGateways: SEED_PAYMENT_GATEWAYS,
@@ -196,6 +213,19 @@ export const useSiteStore = create<SiteState>((setStore, getStore) => ({
     }
     try {
       await setDoc(doc(db, 'home_content', 'config'), updated, { merge: true });
+    } catch {
+      // local persistence fallback
+    }
+  },
+
+  updateBackgroundVideo: async (pageKey, config) => {
+    const current = getStore().backgroundVideos;
+    const updatedPage = { ...current[pageKey], ...config };
+    const updated = { ...current, [pageKey]: updatedPage };
+    setStore({ backgroundVideos: updated });
+    await set('page_backgrounds', updated);
+    try {
+      await setDoc(doc(db, 'page_backgrounds', pageKey), updatedPage, { merge: true });
     } catch {
       // local persistence fallback
     }
